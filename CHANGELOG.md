@@ -6,6 +6,10 @@ All notable changes to ctx-handoff. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+### Changed
+
+- **Handoffs keep who said what:** the next step quotes your latest request and stops at "waiting for you" when that work is done; hook feedback and injected notes are no longer written up as your requests; rules about forbidden operations and secrets are copied word for word. Borrowed from Claude Code's own compact prompt.
+
 ## [0.6.0] - 2026-10-09
 
 Handoff summaries now carry most of what the next conversation needs, project notes follow what you actually care about, and rules that keep failing turn into guards Claude asks you about. Items moved into your repo no longer get stuck, and leftover `/config` rows are gone.
