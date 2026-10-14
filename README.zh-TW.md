@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <b>讓 Claude Code 的長對話自己接續下去，<br>記住你教過 Claude 的事，並在它常犯的小錯上即時提醒。</b>
+  <b>記住你教過 Claude 的事，在它常犯的小錯上即時提醒，<br>離開再回來，長對話也能接著做。</b>
 </p>
 
 <p align="center">

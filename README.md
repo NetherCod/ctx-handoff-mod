@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <b>Keep long Claude Code sessions going on their own,<br>have Claude remember what you taught it, and catch its usual slips.</b>
+  <b>Have Claude remember what you taught it, catch its usual slips,<br>and pick long sessions back up when you return.</b>
 </p>
 
 <p align="center">
