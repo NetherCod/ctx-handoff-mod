@@ -126,6 +126,14 @@ export function panelTree(ui: Elements, v: PanelView, act: PanelActions) {
               {g.replay
                 ? <Text dimColor>{m.replay(g.replay.calls, g.replay.hits)}</Text>
                 : null}
+              {isOpen(`g${g.id}`) && g.recent?.length
+                ? (
+                  <Box flexDirection="column">
+                    <Text dimColor>{m.recentHits}</Text>
+                    {g.recent.map((r, i) => <Text key={`h${g.id}-${i}`} dimColor>{'  '}{fit(r, inner - 6)}</Text>)}
+                  </Box>
+                )
+                : null}
             </Box>
           </Box>
         )

@@ -29,10 +29,18 @@ export type Guard = {
 }
 // 命中次數不存在守門資料裡：每次命中都改同一筆，會和面板核准互蓋（$.store 同一個鍵的讀改寫，見 CLAUDE.md 平台事實）。
 // 改記在統計 stats:<工作區> 的 guard.hit.<編號>，顯示時才併進來
-export type GuardView = Guard & { hits: number }
+// recent：最近幾次命中的指令片段，讓人看得出命中是不是真的該提醒（issue #6：10 次全是誤報卻看不出來）
+export type GuardView = Guard & { hits: number; recent: string[] }
 export const guardHitKey = (id: number) => `guard.hit.${id}`
-export const withHits = (guards: Guard[], counts: Record<string, number> = {}): GuardView[] =>
-  guards.map(g => ({ ...g, hits: counts[guardHitKey(g.id)] ?? 0 }))
+export const GUARD_RECENT_SHOWN = 3
+export const withHits = (guards: Guard[], counts: Record<string, number> = {}, events: { what: string; detail: string }[] = []): GuardView[] =>
+  guards.map(g => ({
+    ...g,
+    hits: counts[guardHitKey(g.id)] ?? 0,
+    // 統計記的是「#編號 工具: 指令」，顯示時去掉前綴、壓成一行
+    recent: events.filter(e => e.what === guardHitKey(g.id)).slice(-GUARD_RECENT_SHOWN)
+      .map(e => clip(e.detail.replace(/^#\d+ [^:]*: /, '').replace(/\s+/g, ' ').trim(), 100)),
+  }))
 
 // 比對對象：工具參數裡的字串值（Bash 就是 command），其他值轉成 JSON，以換行串起來
 export function inputText(input: Record<string, unknown>) {
@@ -163,6 +171,7 @@ export function guardListText(guards: GuardView[]) {
       `${m.ind}→ ${g.message}`,
       ...(g.bad && g.good ? [`${m.ind}${m.guard.example(clip(g.bad, 80), clip(g.good, 80))}`] : []),
       ...(g.replay ? [`${m.ind}${m.guard.replay(g.replay.calls, g.replay.hits)}`] : []),
+      ...(g.recent.length ? [`${m.ind}${m.guard.recentHits}`, ...g.recent.map(r => `${m.ind}　${r}`)] : []),
     ]),
   ].join('\n')
 }

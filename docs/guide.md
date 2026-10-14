@@ -8,7 +8,7 @@ Everything about ctx-handoff in one place: how each feature behaves, every setti
 
 ### Handoff when the conversation is nearly full
 
-At 600k tokens (80% of smaller windows) it waits for Claude to finish its turn, its background tasks and subagents, then writes a handoff summary, clears the conversation and sends the summary into the new one. The new conversation says what it understood and waits for you.
+Off by default: nothing happens at the threshold and Claude Code's own compact handles it. With `auto_handoff` turned on in the panel's Settings tab, at 600k tokens (80% of smaller windows) it waits for Claude to finish its turn, its background tasks and subagents, then writes a handoff summary, clears the conversation and sends the summary into the new one. The new conversation says what it understood and waits for you.
 
 The summary keeps apart what was verified (tests run, results seen), what was only changed and what was only discussed, lists approaches that failed so they aren't tried again, notes anything still running or unsaved, keeps limits you set ("ask before pushing") in your own words, records what was already found out (where things are, counts, root causes) and how to run the tools, and ends with one concrete next step. Questions waiting for you come with their background and options, so you can answer without scrolling back. Its length follows the work, with no word cap.
 
@@ -64,6 +64,7 @@ Everything is set on the panel's Settings tab, not in `/config`. Numbers step wi
 
 | Setting | Default | Meaning |
 |---|---|---|
+| `auto_handoff` | off | Hand off at the threshold; when off, Claude Code's own compact takes over |
 | `threshold` | `600000` | Context tokens that trigger a handoff |
 | `window_ratio` | `0.8` | On smaller windows, hand off at `window × ratio` |
 | Keep cache warm | on | Also `/handoff refresh on\|off` |

@@ -4,6 +4,8 @@ export type PanelTab = 'guard' | 'memory' | 'rules' | 'distill' | 'settings'
 export type PanelGuard = {
   id: number; rule: string; tool: string; match: string; unless?: string; message: string
   mode: 'deny' | 'remind'; state: 'proposed' | 'on' | 'off'; hits: number
+  // 最近幾次命中的指令（熱重載前存的快照可能沒有）
+  recent?: string[]
   replay?: { hits: number; calls: number }
   bad?: string; good?: string
   project?: string

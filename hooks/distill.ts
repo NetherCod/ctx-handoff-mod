@@ -397,6 +397,9 @@ export function applyActions(actions: Action[], n: Notes, day: string, sid = '')
     const evidence = a.evidence?.replace(/^\d{4}-\d{2}-\d{2}\s*[｜|：:]?\s*/, '')
     return evidence || a.quote ? `${stamp}｜${[evidence, a.quote && `使用者原話：「${a.quote}」`].filter(Boolean).join('｜')}` : undefined
   }
+  // 同一個 session 再確認同一條：換掉它之前的根據，不再多一行換句話說的重複（issue #3）
+  const withEvidence = (list: string[], e: string) =>
+    [...(sid ? list.filter(l => !l.startsWith(`${stamp}｜`)) : list), e].slice(-EVIDENCE_KEEP)
   const sameTitle = (a: Memory) => (b: Memory | undefined) => b?.title === a.title
   const rules = n.rules.map(r => ({ ...r, body: [...r.body] })) as (Rule | undefined)[]
   const added: Rule[] = []
@@ -419,7 +422,7 @@ export function applyActions(actions: Action[], n: Notes, day: string, sid = '')
         const e = evidenceOf(a)
         const item: Memory = {
           type: a.type, title: a.title, ...(a.how ? { how: a.how } : {}), ...(a.why ? { why: a.why } : {}),
-          evidence: (e ? [...old.evidence, e] : old.evidence).slice(-EVIDENCE_KEEP),
+          evidence: e ? withEvidence(old.evidence, e) : old.evidence.slice(-EVIDENCE_KEEP),
         }
         memory[a.i] = item
         changes.push(t().change.updateMemory(memHead(item)))
@@ -428,7 +431,7 @@ export function applyActions(actions: Action[], n: Notes, day: string, sid = '')
       case 'confirm_memory': {
         const m = memory[a.i]
         if (m === undefined) break
-        m.evidence = [...m.evidence, evidenceOf({ type: m.type, title: m.title, ...a })!].slice(-EVIDENCE_KEEP)
+        m.evidence = withEvidence(m.evidence, evidenceOf({ type: m.type, title: m.title, ...a })!)
         changes.push(t().change.confirmMemory(memHead(m)))
         break
       }

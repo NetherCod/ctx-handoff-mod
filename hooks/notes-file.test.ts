@@ -424,6 +424,20 @@ test('記憶確認：confirm_memory 加一筆根據，封存的因此恢復帶�
   expect(r.blocks.find(b => b.name === 'ctxHandoffProject')?.text).toContain('- [reference] 很久沒證實的位置')
 })
 
+// 事故（2026-10-14，issue #3）：同一個 session 兩輪整理各確認一次，留下兩行換句話說的根據
+test('記憶確認：同一個 session 再確認，換掉它之前的根據，不多一行', async ($, on) => {
+  const w = world(on, 100_000, 1_000_000, {}, [], 5)
+  w.files.set(NOTES, TIERED_NOTES)
+  ctl.distillReply = actionsReply(
+    { op: 'confirm_memory', id: 'M3', evidence: '查了位置' },
+    { op: 'confirm_memory', id: 'M3', evidence: '又查了一次位置' },
+  )
+  await distillNow($)
+  const notes = w.files.get(NOTES) ?? ''
+  expect(notes).toContain(['- [reference] 很久沒證實的位置', '  - 根據：1969-11-01 abc｜很久以前', '  - 根據：1970-01-01 S1｜又查了一次位置'].join('\n'))
+  expect(notes).not.toContain('S1｜查了位置')
+})
+
 test('面板：封存的記憶另列一區，按留下就加一筆今天的根據並恢復', async ($, on) => {
   const w = world(on, 1000)
   w.files.set(NOTES, TIERED_NOTES)

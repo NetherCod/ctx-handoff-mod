@@ -13,6 +13,19 @@ test('達 600k：產生 handoff → /clear → 送出', async ($, on) => {
   expect(w.submits[0]).toContain('HANDOFF: 測試')
 })
 
+test('自動交接關閉（預設）：到門檻不交接，每 30 則照樣整理', async ($, on) => {
+  const w = world(on, 650_000, 1_000_000, {}, [], 30)
+  ctl.pluginOptions = { auto_handoff: false }
+  await stop($)
+  await w.clock.advance(0)
+  expect(w.forks.length).toBe(0)
+  expect(w.commands).toEqual([])
+  await endTurn($)
+  await w.clock.advance(0)
+  expect(w.forks.length).toBe(1)
+  expect(w.commands).toEqual([])
+})
+
 test('200k 視窗：門檻降為 160k', async ($, on) => {
   const w = world(on, 170_000, 200_000)
   await stop($)

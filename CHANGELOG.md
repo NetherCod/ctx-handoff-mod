@@ -8,7 +8,14 @@ All notable changes to ctx-handoff. The format follows [Keep a Changelog](https:
 
 ### Changed
 
+- **Handoff at the threshold is now off by default:** Claude Code's own compact takes over; turn on `auto_handoff` in the panel's Settings tab to use it. Keeping the cache warm, project notes and everything else are unchanged.
+- **Guard list shows recent hits:** `/handoff guard` and the panel (when expanded) show the last 3 commands each guard fired on, so false alarms are easy to spot ([#6](https://github.com/cablate/ctx-handoff-mod/issues/6)).
 - **Handoffs keep who said what:** the next step quotes your latest request and stops at "waiting for you" when that work is done; hook feedback and injected notes are no longer written up as your requests; rules about forbidden operations and secrets are copied word for word. Borrowed from Claude Code's own compact prompt.
+
+### Fixed
+
+- **No more duplicate evidence lines from one conversation:** when the same session confirms a memory again, its earlier evidence line is replaced instead of a reworded copy being added ([#3](https://github.com/cablate/ctx-handoff-mod/issues/3)).
+- **Handoffs no longer point at notes by line number:** they use the entry's title or a unique phrase, since the pre-handoff distill rewrites the notes and shifts lines ([#4](https://github.com/cablate/ctx-handoff-mod/issues/4)).
 
 ## [0.6.0] - 2026-10-09
 

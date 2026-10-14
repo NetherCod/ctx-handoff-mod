@@ -92,7 +92,7 @@ export const world = (on: On, tokens: number, window = 1_000_000, store: Record<
   const get = (key: string) => kv.get(key)
   const put = (key: string, value: unknown) => { kv.set(key, value) }
   on('env.get', (_$, e: { name: string }) => ({ value: ctl.envVars[e.name] }))
-  on('settings.read', () => ({ value: { language, pluginConfigs: { 'ctx-handoff@ctx-handoff-mod': { options: ctl.pluginOptions } } } }) as never)
+  on('settings.read', () => ({ value: { language, pluginConfigs: { 'ctx-handoff@ctx-handoff-mod': { options: { auto_handoff: true, ...ctl.pluginOptions } } } } }) as never)
   on('config.set', (_$, e: { key: string; value: unknown }) => ({ value: e.value }) as never)
   on('session.id', () => ({ value: ctl.curSid }))
   on('session.turns', () => ({ value: turnsOf() }))

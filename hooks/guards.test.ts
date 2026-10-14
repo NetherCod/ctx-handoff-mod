@@ -16,6 +16,17 @@ test('守門：啟用的 deny 擋下違規、放行符合 unless 的寫法，並
   expect((w.get('stats:C--proj') as { counts: Record<string, number> }).counts['guard.hit.1']).toBe(1)
 })
 
+// issue #6：命中 10 次全是誤報，清單只顯示次數，看不出來
+test('守門：清單列出最近 3 次命中的指令，讓人判斷是不是誤報', async ($, on) => {
+  world(on, 1000, 1_000_000, { 'guards:C--proj': [pushGuard('on', 'remind')] })
+  for (const c of ['git push a', 'git push b', 'git push c', 'git push\n  d']) await $.tool.call({ tool: 'Bash', command: c })
+  const text = (await cmd($, 'guard')).text
+  expect(text).toContain('最近命中')
+  expect(text).not.toContain('git push a')
+  expect(text).toContain('　git push b')
+  expect(text).toContain('　git push d')
+})
+
 test('守門：草稿與停用的不生效', async ($, on) => {
   world(on, 1000, 1_000_000, { 'guards:C--proj': [pushGuard('proposed'), { ...pushGuard('off'), id: 2 }] })
   const r = await $.tool.call({ tool: 'Bash', command: 'git push' })

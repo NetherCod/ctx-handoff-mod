@@ -26,6 +26,7 @@ node tools/status.mjs             # 確認各 session 已熱重載、看整理�
 
 - **整理用不帶歷史的單次請求**：`$.model.complete`（設定的 `notes_model`，預設 Sonnet 5.5，effort low），只送上次錨點之後的對話片段（`$.session.messages()` 轉成純文字，工具輸入／結果截短，總長有上限），由程式驗證 JSONL 動作再寫檔。交接時先讀好整理要的片段（`distillSnap`）就 `/clear`，不等整理本身。整理一次只跑一個：已有整理在跑時，交接前整理用讀好的片段排在它之後（`rt.distillDone`），其他時機的整理直接略過（2026-10-09：舊程式一律略過，正在跑的那次只涵蓋它開始前的對話，到交接之間的最後一段永遠沒整理）。不要改回 fork：fork 一定用主模型、整段前綴，快取一過期就全價重送。模型最低用 Sonnet 5.5 effort low（維護者決定，不用更小的模型）。
 - **交接仍用 `$.model.fork`**：handoff 需要整段 context。fork 沒有工具、沒有取消參數，時限只能用 `$.clock.after`＋`Promise.race`（原本的 fork 仍在背景跑完）。
+- **到門檻自動交接預設關閉，交給 Claude Code 自己的 compact**（維護者 2026-10-14 決定，起因 issue #5：門檻後等背景工作，context 從 403k 長到 459k 才交接）：設定 `auto_handoff`（預設關）。關閉時 `classic.Stop` 不判斷門檻、不延後，回合結束的「每 N 則整理」也不因超過門檻而略過；離席交接、`/handoff now`、`/handoff resume` 照舊。程式保留，開啟後行為和以前一樣。測試的 `world()` 在 settings.json 預設打開它（`ctl.pluginOptions` 可覆蓋），既有的門檻交接測試不用改。
 - **不自動送訊息通知 AI**：會多一次整段 context 的請求，離席時也會讓離席 handoff 被當成過時刪掉。整理有變動只跳 toast（寫完整路徑），差異用 `prompt.submit` 的 `context` 跟著下一則人類訊息帶入；不用 `session.append`（會插進進行中的回合）。
 - **一個工作區一份經驗檔，不跨專案**：工作區是 session 啟動的資料夾（依 `$.session.root()`；`$.session.repo()` 會跟著 Bash `cd` 變），從 git worktree 啟動時算主工作樹。經驗檔在 `<claude>/projects/<編碼後的工作區路徑>/memory/ctx-handoff.md`，整理只寫它、新對話只帶入它；不追蹤 session 碰過的其他 repo，也不做跨檔搬移（維護者 2026-10-05 決定：多專案分檔造成分錯專案、worktree 對應、多個 session 互改別人檔案等問題）。不寫 `MEMORY.md`（內建 auto memory 開啟時會重複載入或改寫）。
 - **不留相容舊格式的程式**：格式或機制改了就直接改，不寫遷移或雙格式判斷；舊資料用 `tools/notes.mjs` 一次手動整理。

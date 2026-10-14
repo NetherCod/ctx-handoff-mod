@@ -61,9 +61,9 @@ That's it. Update with `claude plugin update ctx-handoff@ctx-handoff-mod`, or tu
 
 ctx-handoff is a growing toolkit for long sessions: new features for working with Claude over hours land here.
 
-### Hands off before the context fills
+### Hands off before the context fills (optional)
 
-At 600k tokens it waits for Claude and its subagents to finish, writes a summary that keeps verified work apart from unverified changes, lists what failed, the limits you set in your own words and what was already found out, ends with one next step, clears, and continues in a fresh conversation. Anything you type meanwhile is carried over.
+Off by default, so Claude Code's own compact takes over. Turn on `auto_handoff` in the panel's Settings tab and at 600k tokens it waits for Claude and its subagents to finish, writes a summary that keeps verified work apart from unverified changes, lists what failed, the limits you set in your own words and what was already found out, ends with one next step, clears, and continues in a fresh conversation. Anything you type meanwhile is carried over.
 
 ### Keeps the cache warm while you're away
 

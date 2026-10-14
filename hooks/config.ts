@@ -7,8 +7,9 @@ import type { ReplyLangSetting } from './lang'
 // settings.json 的 pluginConfigs["ctx-handoff@<marketplace>"].options 寫了也讀，面板的值優先。
 // 不宣告 userConfig：/config 一列一個設定會越來越長（維護者 2026-10-08 決定）。第一次用到、送出新訊息、面板改值時重讀
 type Config = {
-  // 在場 handoff：context 達 min(threshold, 視窗 × windowRatio) 時產生 handoff → /clear → 送出
-  threshold: number; windowRatio: number
+  // 在場 handoff：開啟時，context 達 min(threshold, 視窗 × windowRatio) 時產生 handoff → /clear → 送出；
+  // 預設關閉，交給 Claude Code 自己的 compact（維護者 2026-10-14 決定）
+  autoHandoff: boolean; threshold: number; windowRatio: number
   // 1 小時快取：最後一次用到快取後 idleMs 刷新，最多 maxRefresh 次，之後改產生離席 handoff
   idleMs: number; maxRefresh: number
   // 太小的 context 重建很便宜，不值得刷新、產生離席 handoff 或整理
@@ -33,6 +34,7 @@ export type SettingSpec =
   | { key: string; kind: 'bool'; d: boolean }
   | { key: string; kind: 'choice'; options: readonly string[]; d: string; free?: boolean }
 export const SETTINGS: readonly SettingSpec[] = [
+  { key: 'auto_handoff', kind: 'bool', d: false },
   { key: 'threshold', kind: 'num', min: 50_000, max: 2_000_000, step: 50_000, d: 600_000 },
   { key: 'window_ratio', kind: 'num', min: 0.3, max: 0.95, step: 0.05, d: 0.8 },
   { key: 'idle_minutes', kind: 'num', min: 5, max: 59, step: 5, d: 55 },
@@ -71,7 +73,7 @@ export const settingSource = (key: string, panel: Record<string, unknown>, optio
   panel[key] !== undefined ? 'panel' : options[key] !== undefined ? 'file' : 'default'
 
 const CONFIG_DEFAULTS: Config = {
-  threshold: 600_000, windowRatio: 0.8, idleMs: 55 * 60_000, maxRefresh: 3, minTokens: 30_000, distillEvery: 30,
+  autoHandoff: false, threshold: 600_000, windowRatio: 0.8, idleMs: 55 * 60_000, maxRefresh: 3, minTokens: 30_000, distillEvery: 30,
   notesModel: 'claude-sonnet-5-5', language: 'auto', retryNudge: true, doneCheck: true, replyLanguage: 'auto', resumeHint: true,
 }
 // 目前的設定：只改欄位、不換物件，各檔 import 到的是同一份
@@ -112,6 +114,7 @@ export function resolveConfig(options: Record<string, unknown>, panel: Record<st
     return settingValue(spec, panel[key] ?? options[key])
   }
   return {
+    autoHandoff: get('auto_handoff') as boolean,
     threshold: get('threshold') as number,
     windowRatio: get('window_ratio') as number,
     idleMs: (get('idle_minutes') as number) * 60_000,

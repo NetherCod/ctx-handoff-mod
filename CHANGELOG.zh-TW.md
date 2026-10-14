@@ -8,7 +8,14 @@ ctx-handoff 每個版本值得注意的改動。格式依照 [Keep a Changelog](
 
 ### 變更
 
+- **到門檻自動交接改為預設關閉：** 交給 Claude Code 自己的 compact；要用的話在面板「設定」打開 `auto_handoff`。離開時保持快取、專案筆記與其他功能不變。
+- **守門清單列出最近命中的指令：** `/handoff guard` 與面板（展開後）顯示每條守門最近 3 次命中的指令，看得出是不是誤報（[#6](https://github.com/cablate/ctx-handoff-mod/issues/6)）。
 - **交接分清楚誰說的：** 下一步會逐字引用你最近一次的要求，那件事做完就寫「等使用者指示」；hook 回饋與注入的提示不再被寫成你的要求；禁止的操作與金鑰處理規則逐字照抄。做法參考 Claude Code 內建 compact 的提示詞。
+
+### 修正
+
+- **同一段對話不再重複記根據：** 同一個 session 再次確認同一條記憶時，換掉它先前那行根據，不再留下兩行換句話說的重複（[#3](https://github.com/cablate/ctx-handoff-mod/issues/3)）。
+- **交接摘要不再用行號指涉筆記：** 改用條目標題或獨特的詞句；交接前的整理會改寫筆記，行號會錯位（[#4](https://github.com/cablate/ctx-handoff-mod/issues/4)）。
 
 ## [0.6.0] - 2026-10-09
 

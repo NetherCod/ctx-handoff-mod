@@ -514,6 +514,12 @@ async function onStop($: EngineInterface, e: { agent_id?: string; background_tas
   const oneShot = crons.filter(c => !c.recurring).length
   rt.snapshot = { tasks, oneShot, recurring: crons.length - oneShot }
   if (rt.busy) return
+  // 自動交接關閉：到門檻也不交接，交給 Claude Code 自己的 compact
+  if (!cfg.autoHandoff) {
+    rt.deferral = undefined
+    rt.deferToasted = false
+    return
+  }
   const { context } = await $.session.usage()
   const tokens = context.tokens
   const threshold = thresholdOf(context.window)
@@ -674,7 +680,7 @@ async function guardAskBlock($: EngineInterface, notes: Notes) {
 // 顯示用：併上統計裡的命中次數
 async function guardViews($: EngineInterface) {
   const stats = (await $.store.get(statsKey(await projectKey($)))) as Stats | undefined
-  return withHits(await loadGuards($), stats?.counts)
+  return withHits(await loadGuards($), stats?.counts, stats?.hits)
 }
 
 const guardList = async ($: EngineInterface) => guardListText(await guardViews($))
@@ -738,7 +744,7 @@ async function loadPanelData($: EngineInterface): Promise<PanelData> {
 }
 
 // 設定分頁的列：SETTINGS 的值加上兩個用指令也能切的開關（保持快取、專案筆記，存在 store 的 refresh／distill），依主題排
-const SETTING_ORDER = ['threshold', 'window_ratio', 'refresh', 'idle_minutes', 'max_refresh', 'distill', 'distill_every', 'min_tokens', 'notes_model', 'resume_hint', 'retry_nudge', 'done_check', 'reply_language', 'language']
+const SETTING_ORDER = ['auto_handoff', 'threshold', 'window_ratio', 'refresh', 'idle_minutes', 'max_refresh', 'distill', 'distill_every', 'min_tokens', 'notes_model', 'resume_hint', 'retry_nudge', 'done_check', 'reply_language', 'language']
 const STORE_SWITCHES = new Set(['refresh', 'distill'])
 
 async function settingRows($: EngineInterface): Promise<PanelSetting[]> {
@@ -1167,8 +1173,8 @@ export const register: Register = on => {
     await schedule($)
     if (e.reason !== 'answer') return out
     const { context } = await $.session.usage()
-    // 到門檻的交接由 classic.Stop 判斷；這裡只處理還沒到門檻的整理
-    if (context.tokens !== undefined && context.tokens >= thresholdOf(context.window)) return out
+    // 到門檻的交接由 classic.Stop 判斷；這裡只處理還沒到門檻的整理（自動交接關閉時門檻不算數）
+    if (cfg.autoHandoff && context.tokens !== undefined && context.tokens >= thresholdOf(context.window)) return out
     // 每 distill_every 則使用者訊息，趁快取熱整理一次
     if ((context.tokens ?? 0) >= cfg.minTokens && !rt.distilling && (await isDistillOn($)) && (await sinceDistill($)) >= cfg.distillEvery) {
       const every = cfg.distillEvery
