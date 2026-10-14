@@ -62,7 +62,8 @@ test('S6 兩個 session 各寫自己的 pendingSubmit：第二個成功只刪自
 test('S6 攔下訊息＋/clear 成功＋送出失敗：/handoff resend 送出 handoff 與訊息，刪掉 pending', async ($, on) => {
   const w = world(on, 650_000, 1_000_000, {}, [], 5)
   ctl.failSubmits = 1
-  ctl.onFork = async () => { await say($, '中途訊息') }
+  // 在交接 fork 期間送出（不掛在整理請求上：交接前整理什麼時候發出請求跟交接的先後不固定）
+  ctl.handoffGate = async () => { await say($, '中途訊息') }
   await stop($)
   await w.clock.settle()
   expect(w.submits).toEqual([])

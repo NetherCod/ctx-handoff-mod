@@ -293,3 +293,43 @@ test('沒有 ACTIONS 標記的輸出：不套用，記一行丟棄；空的 ACTI
   expect(w.files.has(NOTES)).toBe(false)
   expect(lastOf(w).rejected.count).toBe(0)
 })
+
+// 事故（2026-10-14，issue #3）：使用者手動整理掉的記憶，整理不知道刪過，同一段對話還在談那些主題就會加回來
+test('墓碑：直接改檔刪掉的記憶，整理加不回來；使用者又提起（附原話）才加回', async ($, on) => {
+  let n = 5
+  const w = world(on, 100_000, 1_000_000, {}, [], () => n)
+  w.files.set(NOTES, EXISTING)
+  await distillNow($)
+  // 使用者自己改檔刪掉「舊 B」
+  w.files.set(NOTES, (w.files.get(NOTES) ?? '').replace('- [project] 舊 B\n', ''))
+  n = 9
+  ctl.distillReply = actionsReply({ op: 'add_memory', type: 'project', title: '舊 B', evidence: '又談到了' })
+  await distillNow($)
+  expect(w.forks[1]).toContain('使用者刪掉的記憶')
+  expect(w.forks[1]).toContain('- 舊 B')
+  expect(w.files.get(NOTES) ?? '').not.toContain('舊 B')
+  expect(lastOf(w).rejected.samples.join('\n')).toContain('使用者刪過「舊 B」')
+  n = 13
+  w.rows.push({ role: 'user', text: '舊 B 其實還是要記著', toolUses: [] })
+  ctl.distillReply = actionsReply({ op: 'add_memory', type: 'project', title: '舊 B', evidence: '使用者要求', quote: '舊 B 其實還是要記著' })
+  await distillNow($)
+  expect(w.files.get(NOTES) ?? '').toContain('- [project] 舊 B')
+  // 加回來之後墓碑拿掉，提示也不再列
+  n = 17
+  ctl.distillReply = actionsReply()
+  await distillNow($)
+  expect(w.forks[3]).not.toContain('使用者刪掉的記憶')
+})
+
+test('墓碑：第一次整理沒有比對對象，不記墓碑；整理自己刪的（被推翻、合併）不算使用者刪的', async ($, on) => {
+  let n = 5
+  const w = world(on, 100_000, 1_000_000, {}, [], () => n)
+  w.files.set(NOTES, EXISTING)
+  ctl.distillReply = actionsReply({ op: 'delete_memory', id: 'M2', reason: '被推翻' })
+  await distillNow($)
+  expect(w.forks[0]).not.toContain('使用者刪掉的記憶')
+  n = 9
+  ctl.distillReply = actionsReply()
+  await distillNow($)
+  expect(w.forks[1]).not.toContain('使用者刪掉的記憶')
+})

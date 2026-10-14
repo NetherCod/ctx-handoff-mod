@@ -23,6 +23,8 @@ import { clearNext, noteStep, peekNext, resolveReplyLang, takePending } from './
 import { addStat, awayKey, describeUsage, pendingKey, pruneSeen, statsKey } from './records'
 import type { Away, DistillError, DistillLast, HandoffError, Kind, Saved, Stats, Usage } from './records'
 import { HANDOFF_PROMPT, forkFailure, heldBlock } from './handoff'
+import { buryMissing, isBuried, memTitles, tombKey } from './tombstones'
+import type { Tombstones } from './tombstones'
 import { guardsFoundInRepo, markAsked, promoteCandidates, promoteItems, promoteText, releaseAsked } from './promote'
 import type { PromoteAsk } from './promote'
 import { backupPath, keepMemory, panelSnapshot, withoutNote } from './panel-data'
@@ -271,6 +273,10 @@ async function distill($: EngineInterface, why: string, queue = true, snap?: Dis
     const file = await notesFile($)
     const original = await readText($, file)
     const notes = parseNotes(original)
+    // 上次整理之後被刪掉的記憶留墓碑（面板、tools/notes.mjs、直接改檔都算），這次不讓整理加回
+    const tk = tombKey(await projectKey($))
+    const tombs = buryMissing((await $.store.get(tk)) as Tombstones | undefined, memTitles(notes), await $.clock.now())
+    await $.store.set(tk, tombs)
     // 還沒放進 repo 的規則、流程與守門：整理從對話認出放好了就記上
     const candidates = promoteCandidates(await loadGuards($), notes)
     // 守門草稿：整理從對話認出使用者要不要採用
@@ -281,7 +287,7 @@ async function distill($: EngineInterface, why: string, queue = true, snap?: Dis
       effort: DISTILL_EFFORT,
       maxTokens: DISTILL_MAX_TOKENS,
       timeoutMs: DISTILL_TIMEOUT_MS,
-      system: distillPrompt(transcript.found ? prev?.anchor : undefined, notes, localStamp(started).slice(0, 10), progressForPrompt(await loadProgress($), started), candidates, await guidesText($), drafts),
+      system: distillPrompt(transcript.found ? prev?.anchor : undefined, notes, localStamp(started).slice(0, 10), progressForPrompt(await loadProgress($), started), candidates, await guidesText($), drafts, tombs.dead.map(d => d.title)),
       prompt: `=== 對話紀錄 ===\n${transcript.text || '（沒有新的對話內容）'}\n=== 對話紀錄結束 ===\n\n依系統指示輸出 ACTIONS。`,
     })
     if (!r.isAnswered) {
@@ -294,7 +300,11 @@ async function distill($: EngineInterface, why: string, queue = true, snap?: Dis
     const stamp = localStamp(now)
     const parsed = parseActions(r.text, notes, userText, candidates.map(c => c.id), drafts.map(d => d.id))
     const rejected = parsed.rejected
-    const actions = await checkPromotions($, parsed.actions, rejected)
+    const actions = (await checkPromotions($, parsed.actions, rejected)).filter(a => {
+      if (a.op !== 'add_memory' || !isBuried(tombs, a.title, a.quote !== undefined)) return true
+      addRejected(rejected, t().reject.buried(a.title), JSON.stringify(a))
+      return false
+    })
     // 整理期間經驗檔被改過：編號對不上，這次不寫也不推進進度，下次重新整理同一段
     if ((await readText($, file)) !== original) {
       const reason = t().distill.edited(file)
@@ -305,7 +315,10 @@ async function distill($: EngineInterface, why: string, queue = true, snap?: Dis
       return r
     }
     const { notes: updated, changes: noteChanges } = applyActions(actions, notes, stamp.slice(0, 10), sid)
-    if (noteChanges.length > 0) await $.fs.write(file, renderNotes(updated, stamp))
+    if (noteChanges.length > 0) {
+      await $.fs.write(file, renderNotes(updated, stamp))
+      await $.store.set(tk, { ...tombs, known: memTitles(updated) })
+    }
     const changes = [...noteChanges, ...await applyPromotions($, actions, candidates, sid, started), ...await applyGuardAnswers($, actions)]
     // 進度備忘（沒有實際進展時模型不輸出，前一份保留）
     const progress = latestProgress(actions)

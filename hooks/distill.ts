@@ -25,7 +25,8 @@ const QUOTE_TYPES = ['user', 'feedback']
 // 整理提示：這個工作區現有的記憶與規則（編號只在這次有效）
 // progress：目前存著的進度（已轉成一行文字），讓模型接著更新而不是從片段猜
 // pending：還沒放進 repo 的規則、流程與守門（編號 R／P 同上面的清單，守門是 G＋守門編號）
-export function distillPrompt(anchor: string | undefined, notes: Notes, day: string, progress = '（無）', pending: { id: string; name: string }[] = [], guides = '', drafts: { id: string; name: string }[] = []) {
+// deleted：使用者刪掉的記憶標題（墓碑），沒有就不出現這一段
+export function distillPrompt(anchor: string | undefined, notes: Notes, day: string, progress = '（無）', pending: { id: string; name: string }[] = [], guides = '', drafts: { id: string; name: string }[] = [], deleted: string[] = []) {
   const mem = notes.memory.length
     ? notes.memory.map((m, i) => `M${i + 1} ${memOneLine(m)}${isArchived(m, day) ? `（已封存：超過 ${STALE_DAYS} 天沒被證實）` : ''}`)
     : ['（無）']
@@ -45,6 +46,11 @@ export function distillPrompt(anchor: string | undefined, notes: Notes, day: str
     '',
     '目前的記憶：', ...mem,
     '',
+    ...(deleted.length ? [
+      '使用者刪掉的記憶（通常是已經寫進 repo 或不再適用）：不要再加回，也不要換個標題加回；只有使用者在附上的對話裡又明確提起，才可以 add_memory，並附 quote 照抄使用者原話。',
+      ...deleted.map(d => `- ${d}`),
+      '',
+    ] : []),
     '目前的規則：', ...rules,
     '',
     '目前的流程：', ...procs,

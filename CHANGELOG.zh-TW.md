@@ -14,6 +14,7 @@ ctx-handoff 每個版本值得注意的改動。格式依照 [Keep a Changelog](
 
 ### 修正
 
+- **你刪掉的記憶不會被整理加回來：** 不管是從面板、`tools/notes.mjs` 還是直接改檔刪的，之後 90 天內整理都不會再把同一條加回去，也不會換個標題加回；只有你在對話裡自己又提起時才會重新記下（[#3](https://github.com/cablate/ctx-handoff-mod/issues/3)）。
 - **repo 已經有的守門不再一直被交代：** 新對話開頭先看 repo 的 `.claude/hooks/` 與 `.claude/settings.json`，守門的提醒文字已經寫在裡面，就記成已在那個檔案並停用 ctx-handoff 這份，不再請 Claude 放進 repo，也不會和 repo 的 hook 重複提醒（[#2](https://github.com/cablate/ctx-handoff-mod/issues/2)）。
 - **同一段對話不再重複記根據：** 同一個 session 再次確認同一條記憶時，換掉它先前那行根據，不再留下兩行換句話說的重複（[#3](https://github.com/cablate/ctx-handoff-mod/issues/3)）。
 - **交接摘要不再用行號指涉筆記：** 改用條目標題或獨特的詞句；交接前的整理會改寫筆記，行號會錯位（[#4](https://github.com/cablate/ctx-handoff-mod/issues/4)）。

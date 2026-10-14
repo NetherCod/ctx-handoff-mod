@@ -14,6 +14,7 @@ All notable changes to ctx-handoff. The format follows [Keep a Changelog](https:
 
 ### Fixed
 
+- **Memories you delete stay deleted:** whether removed in the panel, with `tools/notes.mjs` or by editing the file, distill won't add the same memory back (or reword it back) for 90 days, unless you bring it up again yourself in the conversation ([#3](https://github.com/cablate/ctx-handoff-mod/issues/3)).
 - **Guards the repo already has stop coming back:** at the start of a new conversation ctx-handoff checks the repo's `.claude/hooks/` and `.claude/settings.json`; if a guard's message is already written there, the guard is recorded as in that file and ctx-handoff's own copy is turned off, so Claude is not asked to add it again and the reminder no longer shows up twice ([#2](https://github.com/cablate/ctx-handoff-mod/issues/2)).
 - **No more duplicate evidence lines from one conversation:** when the same session confirms a memory again, its earlier evidence line is replaced instead of a reworded copy being added ([#3](https://github.com/cablate/ctx-handoff-mod/issues/3)).
 - **Handoffs no longer point at notes by line number:** they use the entry's title or a unique phrase, since the pre-handoff distill rewrites the notes and shifts lines ([#4](https://github.com/cablate/ctx-handoff-mod/issues/4)).
