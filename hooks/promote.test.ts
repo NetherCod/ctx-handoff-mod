@@ -46,6 +46,26 @@ test('放進專案：git repo 裡，出現 3 次以上的規則與啟用中的�
   expect((w.get('promote:C--proj') as Record<string, { sid: string }>)['g:1']?.sid).toBe('S1')
 })
 
+// 事故（2026-10-14，issue #2）：AI 說「三條守門已經在 .claude/hooks/x.mjs」卻沒寫編號，整理沒對上，
+// 每段新對話都再交代，repo 的 hook 和 ctx-handoff 這份也同時提醒
+test('放進專案：守門的提醒文字已經寫在 repo 的 hook 檔，直接記成已在那裡並停用，不再交代；太短的不比對', async ($, on) => {
+  const message = '正式站 SQL 請改用 node tools/ops/prod/sql.mjs（預設唯讀）'
+  const w = repoWorld(on, { 'guards:C--proj': [{ ...pushGuard('on', 'remind'), message }, { ...pushGuard('on'), id: 2 }] })
+  w.files.set('C:/proj/.claude/hooks/prod-guard.mjs', `const MSG = '${message}'\n// 先跑 preflight 再推`)
+  await startSession($)
+  const text = (await promoteBlockOf($)) ?? ''
+  expect(text).not.toContain('守門 #1')
+  expect(text).toContain('守門 #2')
+  const guards = w.get('guards:C--proj') as { id: number; state: string; project?: string }[]
+  expect(guards[0]).toMatchObject({ state: 'off', project: '已在 .claude/hooks/prod-guard.mjs' })
+  expect(guards[1]).toMatchObject({ state: 'on' })
+  expect(guards[1]?.project).toBeUndefined()
+  expect(Object.keys(w.get('promote:C--proj') as object).sort()).toEqual(['g:2', 'r:正式站刪除要斷言筆數'])
+  // 停用後同一個指令不再由 ctx-handoff 提醒
+  const r = await $.tool.call({ tool: 'Bash', command: 'git push' })
+  expect((r.context ?? []).join('\n')).not.toContain(message)
+})
+
 test('放進專案：不是 git repo（例如在家目錄開的 session）就不交代', async ($, on) => {
   const w = world(on, 100_000)
   w.files.set(NOTES, PROMOTE_NOTES)

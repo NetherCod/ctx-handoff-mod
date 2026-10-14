@@ -23,7 +23,7 @@ import { clearNext, noteStep, peekNext, resolveReplyLang, takePending } from './
 import { addStat, awayKey, describeUsage, pendingKey, pruneSeen, statsKey } from './records'
 import type { Away, DistillError, DistillLast, HandoffError, Kind, Saved, Stats, Usage } from './records'
 import { HANDOFF_PROMPT, forkFailure, heldBlock } from './handoff'
-import { markAsked, promoteCandidates, promoteItems, promoteText, releaseAsked } from './promote'
+import { guardsFoundInRepo, markAsked, promoteCandidates, promoteItems, promoteText, releaseAsked } from './promote'
 import type { PromoteAsk } from './promote'
 import { backupPath, keepMemory, panelSnapshot, withoutNote } from './panel-data'
 import { distillStatusText, statusText, usageText } from './status'
@@ -887,11 +887,43 @@ async function promoteBlock($: EngineInterface, notes: Notes) {
   const root = slash(await $.session.root())
   if (!(await $.fs.exists(`${root}/.git`))) return undefined
   const asked = await loadAsked($)
+  const released = await guardsAlreadyInRepo($, root, asked)
   const items = promoteItems(await loadGuards($), notes, asked)
-  if (items.length === 0) return undefined
+  if (items.length === 0) {
+    if (released) await $.store.set(await promoteKey($), asked)
+    return undefined
+  }
   markAsked(asked, items, await $.session.id(), await $.clock.now())
   await $.store.set(await promoteKey($), asked)
   return promoteText(items)
+}
+
+// 啟用中的守門，提醒文字已經寫在 repo 的 .claude/hooks/ 或 .claude/settings.json：記成已在那個檔案並停用這份，
+// 收回它的交代紀錄（asked 由呼叫端寫回）。只讀 repo，不寫
+async function guardsAlreadyInRepo($: EngineInterface, root: string, asked: Record<string, PromoteAsk>) {
+  const guards = await loadGuards($)
+  if (!guards.some(g => g.state === 'on' && g.project === undefined)) return false
+  const paths = ['.claude/settings.json']
+  try {
+    for (const e of await $.fs.list(`${root}/.claude/hooks`)) if (e.kind === 'file') paths.push(`.claude/hooks/${e.name}`)
+  } catch {}
+  const files: { path: string; text: string }[] = []
+  for (const p of paths) {
+    try { files.push({ path: p, text: await $.fs.read(`${root}/${p}`) }) } catch {}
+  }
+  const found = guardsFoundInRepo(guards, files)
+  if (found.length === 0) return false
+  for (const f of found) {
+    const g = guards.find(x => x.id === f.id)
+    if (!g) continue
+    g.project = `${PROJECT_IN}${f.where}`
+    g.state = 'off'
+    delete asked[`g:${g.id}`]
+    $.ui.log(t().change.inProject(g.rule, f.where))
+  }
+  await $.store.set(await guardsKey($), guards)
+  await refreshPanel($)
+  return true
 }
 
 // 收回交給這段對話的項目（before：只收回這個時間之前交代的），下一段新對話再交代

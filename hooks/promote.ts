@@ -63,3 +63,19 @@ export const promoteText = (items: { key: string; line: string }[]) => [
   '',
   ...items.map(c => c.line),
 ].join('\n')
+
+// 守門的提醒文字已經原樣寫在 repo 的 hook 檔裡：當作已經放進 repo（不用等整理從對話看出來）。
+// 事故（2026-10-14，issue #2）：AI 說「三條守門已經在 .claude/hooks/x.mjs」，但沒寫編號，整理模型沒對上，
+// 之後每段新對話都再交代一次，而且 repo 的 hook 和 ctx-handoff 這份同時提醒。太短的提醒文字容易誤中，不比對
+export const GUARD_FOUND_MIN_CHARS = 20
+export function guardsFoundInRepo(guards: Guard[], files: { path: string; text: string }[]) {
+  const out: { id: number; where: string }[] = []
+  for (const g of guards) {
+    if (g.state !== 'on' || g.project !== undefined) continue
+    const message = g.message.trim()
+    if (message.length < GUARD_FOUND_MIN_CHARS) continue
+    const hit = files.find(f => f.text.includes(message))
+    if (hit) out.push({ id: g.id, where: hit.path })
+  }
+  return out
+}
