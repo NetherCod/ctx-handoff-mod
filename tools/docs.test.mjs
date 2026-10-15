@@ -24,6 +24,9 @@ test('README：多一個章節會被抓到；佔位文字可以翻譯', () => {
   assert.deepEqual(compare('- `a/<name>/b`', '- `a/<名稱>/b`'), [])
   // 錨點跟著標題翻譯
   assert.deepEqual(compare('[s](docs/g.md#settings)', '[s](docs/g.zh-TW.md#設定)'), [])
+  // 各語言自己的圖
+  assert.deepEqual(compare('<img src="docs/a.svg">', '<img src="docs/a.zh-TW.svg">'), [])
+  assert.match(compare('<img src="docs/a.svg">', '<img src="docs/b.zh-TW.svg">').join('\n'), /缺少連結/)
 })
 
 const CL_EN = ['# Changelog', '', '## [Unreleased]', '', '## [1.1.0] - 2026-01-02', '', 'Faster.', '', '### Added', '', '- **X:** does x.', '', '### Fixed', '', '- y', '', '## [1.0.0] - 2026-01-01', '', 'First.', '', '[1.1.0]: https://example.com/compare/v1.0.0...v1.1.0', ''].join('\n')

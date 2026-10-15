@@ -85,9 +85,9 @@ Preferences, corrections and facts become one Markdown notes file per project, l
 
 ### Guards you approve, one panel for everything
 
-`/handoff guard suggest` turns a rule that keeps coming up into a check on tool calls, and nothing applies until you approve it. `/handoff panel` opens a panel above the prompt for guards, memories, rules, the latest notes update and every setting.
+When a rule is already written down but keeps getting broken, ctx-handoff drafts a guard: a check on tool calls that reminds or blocks Claude. Claude asks you about it in the next conversation, and nothing applies until you say yes. `/handoff panel` opens a panel above the prompt for guards, memories, rules, the latest notes update and every setting.
 
-<img src="docs/panel.png" width="560" alt="The panel above the prompt, on the Rules tab, listing rules with how many times each came up. Text in Traditional Chinese.">
+<img src="docs/assets/guard.svg" width="900" alt="Animation: a rule in CLAUDE.md that keeps getting broken is drafted into a guard; Claude asks whether to turn it on, you say yes, and the next git push gets a reminder. Beside it, the panel above the prompt steps through its tabs: guards, memory, rules, the last update and settings">
 
 ## Settings
 

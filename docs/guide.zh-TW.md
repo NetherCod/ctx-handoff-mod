@@ -22,7 +22,7 @@ ctx-handoff 的完整說明：每個功能怎麼運作、所有設定與指令�
 
 ### 專案筆記
 
-<img src="distill-demo.gif" width="300" alt="示範：同一件事講了三次，開新對話後被忘記；ctx-handoff 把它整理成一條規則，下一段對話就記得了">
+<img src="assets/memory.zh-TW.svg" width="900" alt="動畫：三天裡說了三次的同一件事，變成專案規則，再變成 CLAUDE.md 裡的一行，等你檢查">
 
 你糾正或說明過的事，會整理進每個專案一份的筆記檔，每次開新對話自動帶入。它是可以直接編輯的 Markdown：`~/.claude/projects/<專案路徑>/memory/ctx-handoff.md`。
 
@@ -56,7 +56,7 @@ ctx-handoff 的完整說明：每個功能怎麼運作、所有設定與指令�
 
 `/handoff panel` 在輸入框上方開面板，有五個分頁：待核准的守門、記憶、規則與流程、最近一次整理改了什麼，以及設定。刪除筆記要按兩次確認，並會先備份原檔。直接點按鈕，或按 ctrl+x tab 再按 1–5 切分頁。再打一次指令關閉。
 
-<img src="panel.png" width="560" alt="輸入框上方的面板，停在規則分頁：上方是守門、記憶、規則、最近整理等分頁，下面列出各條規則（例如宣布發版前先確認部署版本）與出現次數">
+<img src="assets/guard.zh-TW.svg" width="900" alt="動畫：寫在 CLAUDE.md 的規則一再被違反，被起草成守門；Claude 問要不要啟用，你說好，下一次 git push 就收到提醒。旁邊是輸入框上方的面板，依序切換守門、記憶、規則、最近整理與設定分頁">
 
 ## 設定
 

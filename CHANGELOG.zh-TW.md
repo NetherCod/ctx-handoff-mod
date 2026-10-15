@@ -8,6 +8,7 @@ ctx-handoff 每個版本值得注意的改動。格式依照 [Keep a Changelog](
 
 ### 變更
 
+- **README 的動畫有中英兩版：** 繁體中文 README 用自己的 banner 與動畫，守門與面板那段改成動畫，不再是截圖。使用指南也換成同一批動畫；banner 改列現在的功能（到門檻自動交接已預設關閉）。
 - **到門檻自動交接改為預設關閉：** 交給 Claude Code 自己的 compact；要用的話在面板「設定」打開 `auto_handoff`。離開時保持快取、專案筆記與其他功能不變。
 - **守門清單列出最近命中的指令：** `/handoff guard` 與面板（展開後）顯示每條守門最近 3 次命中的指令，看得出是不是誤報（[#6](https://github.com/cablate/ctx-handoff-mod/issues/6)）。
 - **交接分清楚誰說的：** 下一步會逐字引用你最近一次的要求，那件事做完就寫「等使用者指示」；hook 回饋與注入的提示不再被寫成你的要求；禁止的操作與金鑰處理規則逐字照抄。做法參考 Claude Code 內建 compact 的提示詞。

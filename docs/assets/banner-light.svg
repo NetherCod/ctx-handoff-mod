@@ -48,5 +48,5 @@
 
   <text x="470" y="160" class="mono" font-size="86" font-weight="700" fill="#1f2328" letter-spacing="-2">ctx<tspan fill="url(#accent)">-</tspan>handoff</text>
   <text x="474" y="212" class="sans" font-size="30" fill="#31363d">The long-session toolkit for Claude Code</text>
-  <text x="474" y="256" class="sans" font-size="21" fill="#59636e">Auto handoff · Warm cache while away · Project memory · Nudges on slips</text>
+  <text x="474" y="256" class="sans" font-size="21" fill="#59636e">Project notes · Nudges on slips · Warm cache · Resume where you stopped</text>
 </svg>

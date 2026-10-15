@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/banner-dark.svg">
-    <img src="docs/assets/banner-light.svg" width="900" alt="ctx-handoff：Claude Code 長時間工作的工具箱">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/banner-dark.zh-TW.svg">
+    <img src="docs/assets/banner-light.zh-TW.svg" width="900" alt="ctx-handoff：Claude Code 長時間工作的工具箱">
   </picture>
 </p>
 
@@ -21,7 +21,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/handoff.svg" width="900" alt="動畫：長對話的 context 填到門檻；ctx-handoff 寫好摘要（驗證過的、失敗過的、你訂的限制、下一步），清空對話，新對話接著做">
+  <img src="docs/assets/handoff.zh-TW.svg" width="900" alt="動畫：長對話的 context 填到門檻；ctx-handoff 寫好摘要（驗證過的、失敗過的、你訂的限制、下一步），清空對話，新對話接著做">
 </p>
 
 ## 為什麼需要
@@ -67,27 +67,27 @@ ctx-handoff 是持續成長的長時間工作工具箱：和 Claude 一起工作
 
 ### 離開時保持快取
 
-<img src="docs/assets/cache.svg" width="900" alt="動畫：你離開後，快取在 55、110、165 分鐘各刷新一次；之後存好摘要，你回來時選擇接續或留在原對話">
+<img src="docs/assets/cache.zh-TW.svg" width="900" alt="動畫：你離開後，快取在 55、110、165 分鐘各刷新一次；之後存好摘要，你回來時選擇接續或留在原對話">
 
 ### 學會你的專案，再交給你的 repo
 
-<img src="docs/assets/memory.svg" width="900" alt="動畫：三天裡說了三次的同一件事，變成專案規則，再變成 CLAUDE.md 裡的一行，等你檢查">
+<img src="docs/assets/memory.zh-TW.svg" width="900" alt="動畫：三天裡說了三次的同一件事，變成專案規則，再變成 CLAUDE.md 裡的一行，等你檢查">
 
 偏好、修正與事實會整理成每個專案一份的 Markdown 筆記，每次開新對話自動帶入。你重複做的流程會變成專案 skill。只讀新增的對話，用 Sonnet 5.5（effort low）整理。
 
 ### 記得你停在哪
 
-<img src="docs/assets/resume.svg" width="900" alt="動畫：/clear 之後，下一段對話被告知上一個任務、狀態與下一步">
+<img src="docs/assets/resume.zh-TW.svg" width="900" alt="動畫：/clear 之後，下一段對話被告知上一個任務、狀態與下一步">
 
 ### 抓住常犯的小錯
 
-<img src="docs/assets/nudges.svg" width="900" alt="動畫：同一個失敗兩次、沒驗證就說完成、說明漂成別的語言時的提醒">
+<img src="docs/assets/nudges.zh-TW.svg" width="900" alt="動畫：同一個失敗兩次、沒驗證就說完成、說明漂成別的語言時的提醒">
 
 ### 你核准的守門，一個面板管全部
 
-`/handoff guard suggest` 把一再出現的規則變成工具呼叫的檢查，你核准之前不會生效。`/handoff panel` 在輸入框上方開面板，管理守門、記憶、規則、最近一次整理與所有設定。
+已經寫成規則、卻一再被違反的事，ctx-handoff 會起草成守門：檢查工具呼叫，提醒或擋下 Claude。下一段對話由 Claude 問你要不要採用，你說好才生效。`/handoff panel` 在輸入框上方開面板，管理守門、記憶、規則、最近一次整理與所有設定。
 
-<img src="docs/panel.png" width="560" alt="輸入框上方的面板，停在規則分頁，列出各條規則與出現次數">
+<img src="docs/assets/guard.zh-TW.svg" width="900" alt="動畫：寫在 CLAUDE.md 的規則一再被違反，被起草成守門；Claude 問要不要啟用，你說好，下一次 git push 就收到提醒。旁邊是輸入框上方的面板，依序切換守門、記憶、規則、最近整理與設定分頁">
 
 ## 設定
 

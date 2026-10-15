@@ -8,6 +8,7 @@ All notable changes to ctx-handoff. The format follows [Keep a Changelog](https:
 
 ### Changed
 
+- **README animations in both languages:** the Traditional Chinese README has its own banner and animations, and the guards and panel section shows an animation instead of a screenshot. The guide uses the same animations, and the banner lists what ctx-handoff does now that threshold handoff is off by default.
 - **Handoff at the threshold is now off by default:** Claude Code's own compact takes over; turn on `auto_handoff` in the panel's Settings tab to use it. Keeping the cache warm, project notes and everything else are unchanged.
 - **Guard list shows recent hits:** `/handoff guard` and the panel (when expanded) show the last 3 commands each guard fired on, so false alarms are easy to spot ([#6](https://github.com/cablate/ctx-handoff-mod/issues/6)).
 - **Handoffs keep who said what:** the next step quotes your latest request and stops at "waiting for you" when that work is done; hook feedback and injected notes are no longer written up as your requests; rules about forbidden operations and secrets are copied word for word. Borrowed from Claude Code's own compact prompt.

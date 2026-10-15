@@ -22,7 +22,7 @@ After about 55 idle minutes it sends a tiny request so the conversation cache do
 
 ### Project notes
 
-<img src="distill-demo.gif" width="300" alt="Demo: the user repeats the same instruction three times and a new conversation forgets it; ctx-handoff turns it into a rule, and the next conversation remembers. Text in Traditional Chinese.">
+<img src="assets/memory.svg" width="900" alt="Animation: the same instruction on three days becomes a project rule, then a line in CLAUDE.md for you to review">
 
 What you correct or explain is collected into one notes file per project, loaded into each new conversation. It's plain Markdown you can edit: `~/.claude/projects/<project path>/memory/ctx-handoff.md`.
 
@@ -56,7 +56,7 @@ A guard is for a rule that writing down didn't fix: one that went into your repo
 
 `/handoff panel` opens a panel above the prompt with five tabs: guards to approve, memories, rules and procedures, the latest notes update, and settings. Deleting a note takes two presses and backs up the file first. Click the buttons, or press ctrl+x tab and then 1–5 to switch tabs. Run the command again to close it.
 
-<img src="panel.png" width="560" alt="The panel above the prompt, on the Rules tab: tabs for guards, memories, rules and the latest update, then rules such as checking the deployed version before announcing a release, each with how many times it came up. Text in Traditional Chinese.">
+<img src="assets/guard.svg" width="900" alt="Animation: a rule in CLAUDE.md that keeps getting broken is drafted into a guard; Claude asks whether to turn it on, you say yes, and the next git push gets a reminder. Beside it, the panel above the prompt steps through its tabs: guards, memory, rules, the last update and settings">
 
 ## Settings
 
