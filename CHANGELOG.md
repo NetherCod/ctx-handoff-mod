@@ -6,6 +6,10 @@ All notable changes to ctx-handoff. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+### Changed
+
+- **Panel docks on the right:** `/handoff panel` opens as a full-height side panel beside the conversation in fullscreen terminals 110 columns or wider; elsewhere it opens above the prompt. In the narrow side panel, buttons move under each row so titles keep the full width.
+
 ## [0.7.0] - 2026-10-15
 
 Handing off at the threshold is now off by default, so Claude Code's own compact takes over while everything else keeps running. Memories you delete stay deleted, guards your repo already has stop coming back, and handoffs keep who said what.

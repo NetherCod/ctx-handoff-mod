@@ -54,7 +54,7 @@ A guard is for a rule that writing down didn't fix: one that went into your repo
 
 ### Panel
 
-`/handoff panel` opens a panel above the prompt with five tabs: guards to approve, memories, rules and procedures, the latest notes update, and settings. Deleting a note takes two presses and backs up the file first. Click the buttons, or press ctrl+x tab and then 1–5 to switch tabs. Run the command again to close it.
+`/handoff panel` opens a panel with five tabs: guards to approve, memories, rules and procedures, the latest notes update, and settings. In a fullscreen terminal 110 columns or wider it docks on the right, full height; otherwise it opens above the prompt. Drag its edge to change the width. Deleting a note takes two presses and backs up the file first. Click the buttons, or press ctrl+x tab and then 1–5 to switch tabs. Run the command again to close it.
 
 <img src="assets/guard.svg" width="900" alt="Animation: a rule in CLAUDE.md that keeps getting broken is drafted into a guard; Claude asks whether to turn it on, you say yes, and the next git push gets a reminder. Beside it, the panel above the prompt steps through its tabs: guards, memory, rules, the last update and settings">
 

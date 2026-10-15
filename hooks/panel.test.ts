@@ -1,35 +1,33 @@
-// 面板：輸入框上方的分頁、守門核准、刪除記憶與規則
+// 面板：右側 Pane 的分頁、守門核准、刪除記憶與規則
 import { expect, test } from 'claude-code/testing'
-import { cmd, ctl, NOTES_PATH, pushGuard, BAND_MOUNT, openPanel, PANEL_NOTES, world } from './test-world'
+import { cmd, ctl, NOTES_PATH, pushGuard, PANE_MOUNT, paneMount, openPanel, PANEL_NOTES, world } from './test-world'
 
 // ---------- 面板 ----------
 
-test('面板：/handoff panel 在輸入框上方開關；問卷佔著時讓出；按關閉也會收起', async ($, on) => {
+test('面板：/handoff panel 開關右側的 Pane，再打一次關閉後可以再開', async ($, on) => {
   const w = world(on, 1000)
   w.files.set(NOTES_PATH, PANEL_NOTES)
-  // 下層（引擎或其他 plugin）自己畫的內容
-  on('ui.render', () => h('Text', null, '下層的內容') as never)
-  const closed = await $.ui.mount(BAND_MOUNT)
-  expect(await closed.find({ type: 'Text', text: '下層的內容' })).toBeDefined()
-  expect(await closed.find({ type: 'Text', text: /守門/ })).toBeUndefined()
-  await closed.unmount()
   const r = await cmd($, 'panel')
-  expect(r.text).toContain('面板已開在輸入框上方')
-  const ui = await $.ui.mount(BAND_MOUNT)
+  expect(r.text).toContain('面板已開在右側')
+  // 引擎會在指令回覆前加 ctx-handoff:，回覆自己再加 [ctx-handoff] 就重複了（2026-10-07 面板截圖）
+  expect(r.text).not.toContain('[ctx-handoff]')
+  const ui = await $.ui.mount(PANE_MOUNT)
   expect(await ui.find({ type: 'Text', text: 'ctx-handoff' })).toBeDefined()
   await ui.unmount()
-  const survey = await $.ui.mount({ ...BAND_MOUNT, props: { ...BAND_MOUNT.props, hasSurvey: true } })
-  expect(await survey.find({ type: 'Text', text: 'ctx-handoff' })).toBeUndefined()
-  await survey.unmount()
-  const again = await $.ui.mount(BAND_MOUNT)
-  await again.press({ key: 'close' })
-  expect(await again.find({ type: 'Text', text: 'ctx-handoff' })).toBeUndefined()
-  await again.unmount()
-  // 引擎會在指令回覆前加 ctx-handoff:，回覆自己再加 [ctx-handoff] 就重複了（2026-10-07 面板截圖）
-  const opened = (await cmd($, 'panel')).text
-  expect(opened).toContain('面板已開')
-  expect(opened).not.toContain('[ctx-handoff]')
   expect((await cmd($, 'panel')).text).toContain('面板已關閉')
+  expect((await cmd($, 'panel')).text).toContain('面板已開')
+})
+
+// 停靠側欄只有約 56 欄：按鈕換到下一行，標題用整個寬度，不被右側按鈕的寬度截掉
+test('面板：窄的停靠側欄裡，記憶標題不被按鈕寬度截斷', async ($, on) => {
+  const w = world(on, 1000)
+  const title = '使用者要求每次改完程式都先跑完整測試再回報'
+  w.files.set(NOTES_PATH, PANEL_NOTES.replace('使用者要求每次都先跑測試', title))
+  await cmd($, 'panel')
+  const ui = await $.ui.mount(paneMount(56))
+  await ui.press({ key: 'tab:memory' })
+  expect(await ui.find({ type: 'Text', text: new RegExp(title) })).toBeDefined()
+  expect(await ui.find({ key: `del:m:[feedback] ${title}` })).toBeDefined()
 })
 
 test('面板：列出守門與記憶，按核准後守門生效', async ($, on) => {
@@ -94,7 +92,7 @@ test('面板：切分頁、展開與重畫只讀快照不讀檔；指令改了�
   await ui.press({ key: 'tab:memory' })
   expect(await ui.find({ type: 'Text', text: /使用者要求每次都先跑測試/ })).toBeDefined()
   await ui.unmount()
-  const again = await $.ui.mount(BAND_MOUNT)
+  const again = await $.ui.mount(PANE_MOUNT)
   expect(await again.find({ type: 'Text', text: /使用者要求每次都先跑測試/ })).toBeDefined()
   expect(w.reads).toEqual([])
   await again.press({ key: 'tab:guard' })

@@ -212,7 +212,7 @@ const zh = {
 
   // 面板的指令與動作回覆
   panelCmd: {
-    opened: '面板已開在輸入框上方：直接點按鈕，或按 ctrl+x tab 用鍵盤操作；再打一次 /handoff panel 關閉',
+    opened: '面板已開在右側（不是全螢幕版面或終端機太窄時在輸入框上方）：直接點按鈕，或按 ctrl+x tab 用鍵盤操作；再打一次 /handoff panel 關閉',
     closed: '面板已關閉',
     readFailed: (err: string) => `面板資料讀取失敗：${err}`,
     failed: (err: string) => `失敗：${err}`,
@@ -287,7 +287,7 @@ const zh = {
       '　/handoff resend           重新送出沒送達的 handoff（不 /clear）',
       '　/handoff refresh on|off   開關閒置時的快取刷新',
       '　/handoff distill on|off   開關背景整理',
-      '　/handoff panel            開關輸入框上方的面板：最近整理的變動、刪掉記錯的筆記、核准守門、調整設定',
+      '　/handoff panel            開關右側的面板：最近整理的變動、刪掉記錯的筆記、核准守門、調整設定',
       '　/handoff guard           守門清單；suggest 從常犯規則提草稿；on|off|drop N；mode N deny|remind',
     ],
     context: (tokens: string, threshold: number, window: number) => `context ${tokens} / 門檻 ${threshold}（視窗 ${window}）`,
@@ -330,7 +330,6 @@ const zh = {
   // 面板畫面
   panel: {
     title: '・專案筆記與守門',
-    close: '關閉',
     more: '展開',
     less: '收合',
     del: '刪除',
@@ -587,7 +586,7 @@ const en: Messages = {
   },
 
   panelCmd: {
-    opened: 'Panel opened above the input. Click the buttons, or press ctrl+x tab to use the keyboard. Run /handoff panel again to close it',
+    opened: 'Panel opened on the right (above the input when not in fullscreen or the terminal is narrow). Click the buttons, or press ctrl+x tab to use the keyboard. Run /handoff panel again to close it',
     closed: 'Panel closed',
     readFailed: err => `Could not read panel data: ${err}`,
     failed: err => `Failed: ${err}`,
@@ -659,7 +658,7 @@ const en: Messages = {
       '  /handoff resend           resend a handoff that did not arrive (no /clear)',
       '  /handoff refresh on|off   turn the idle cache refresh on or off',
       '  /handoff distill on|off   turn background notes on or off',
-      '  /handoff panel            toggle the panel above the input: latest notes changes, delete wrong notes, approve guards, settings',
+      '  /handoff panel            toggle the side panel: latest notes changes, delete wrong notes, approve guards, settings',
       '  /handoff guard           list guards; suggest drafts them from repeated rules; on|off|drop N; mode N deny|remind',
     ],
     context: (tokens, threshold, window) => `context ${tokens} / threshold ${threshold} (window ${window})`,
@@ -699,7 +698,6 @@ const en: Messages = {
 
   panel: {
     title: ' · Project notes and guards',
-    close: 'Close',
     more: 'More',
     less: 'Less',
     del: 'Delete',

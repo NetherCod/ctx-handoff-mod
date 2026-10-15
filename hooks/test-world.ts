@@ -81,6 +81,11 @@ export const world = (on: On, tokens: number, window = 1_000_000, store: Record<
   const statuses: (string | undefined)[] = []
   on('ui.status', (_$, e: { text?: string }) => { statuses.push(e.text); return { value: undefined } })
   on('ui.toast', (_$, e: unknown) => { toasts.push(JSON.stringify(e)); return { value: undefined } })
+  // 測試引擎沒有 pane 的實作：記下開著的 pane（面板用 Pane 畫）
+  const panes = new Map<string, string>()
+  on('ui.open', (_$, e: { id: string; title?: string }) => { panes.set(e.id, e.title ?? e.id); return { value: { isPlaced: true as const } } })
+  on('ui.close', (_$, e: { id: string }) => { panes.delete(e.id); return { value: undefined } })
+  on('ui.panes', () => ({ value: [...panes].map(([id, title]) => ({ id, title, isShown: true, isFocused: false, isPlaced: true })) }))
   // 自己的 store：測試要直接讀寫（$.store 不在測試引擎的 $ 上）；值經過 JSON 來回，和真的一樣
   const kv = new Map<string, unknown>(Object.entries(store))
   on('store.get', (_$, e: { key: string }) => ({
@@ -253,13 +258,16 @@ export const pushGuard = (state: string, mode = 'deny') => ({
   mode, state, at: 0,
 })
 
-// 面板畫在輸入框上方（AbovePrompt）；/handoff panel 打開後才畫
-export const BAND_MOUNT = { plugin: 'ctx-handoff', surface: 'terminal' as const, component: 'AbovePrompt' as const,
-  props: { hasSurvey: false, isWorking: false, maxRows: 20, bodyColumns: 120, scroll: { offset: 0, bodyRows: 20 }, view: {} } }
+// 面板畫成 Pane（全螢幕版面停靠右側）；/handoff panel 打開後才畫。預設是寬的 inline，columns 給窄的停靠寬度
+export const paneMount = (columns = 120) => ({ plugin: 'ctx-handoff', surface: 'terminal' as const, component: 'Pane' as const,
+  requestId: 'ctx-handoff-panel',
+  props: { title: 'ctx-handoff', isFocused: false, bodyColumns: columns, placement: columns < 80 ? 'dock' as const : 'inline' as const,
+    scroll: { offset: 0, bodyRows: 40 }, view: {} } })
+export const PANE_MOUNT = paneMount()
 // tab：打開後切到哪個分頁（預設守門）
 export const openPanel = async ($: Engine, tab?: string) => {
   await cmd($, 'panel')
-  const ui = await $.ui.mount(BAND_MOUNT)
+  const ui = await $.ui.mount(PANE_MOUNT)
   if (tab) await ui.press({ key: `tab:${tab}` })
   return ui
 }

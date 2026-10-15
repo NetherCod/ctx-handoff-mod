@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer } from 'claude-code'
 import type { PanelData, PanelSetting, PanelUi } from '../types'
-import { panelTree, showSetting } from './panel'
+import { panelLoading, panelTree, showSetting } from './panel'
 import type { PanelActions } from './panel'
 import { getLang, pickLang, setLang, t } from './i18n'
 import type { Lang } from './i18n'
@@ -718,18 +718,21 @@ async function changeGuard($: EngineInterface, id: number, change: 'on' | 'off' 
   return r.g
 }
 
-// /handoff panel：開或關輸入框上方的面板（再打一次就關）
+// /handoff panel：開或關右側停靠的面板（再打一次就關）
+// 開著沒有以引擎的 pane 清單為準：使用者按引擎的關閉鈕、熱重載後都可能和 panelUi.open 對不上
 async function togglePanel($: EngineInterface) {
-  const open = !(await read($, panelUi)).open
+  const open = !(await $.ui.panes()).some(p => p.id === PANEL_PANE)
+  if (!open) {
+    // ui.close hook 會把 panelUi.open 設回 false
+    await $.ui.close({ id: PANEL_PANE })
+    return { text: t().panelCmd.closed }
+  }
   // 先備好資料再打開，畫面一出來就有內容
-  if (open) {
-    const data = await loadPanelData($)
-    await update($, panelData, () => data)
-  }
-  await update($, panelUi, u => ({ open, tab: u.tab, expanded: u.expanded, suggesting: u.suggesting }))
-  return {
-    text: `${open ? t().panelCmd.opened : t().panelCmd.closed}`,
-  }
+  const data = await loadPanelData($)
+  await update($, panelData, () => data)
+  await update($, panelUi, u => ({ open: true, tab: u.tab, expanded: u.expanded, suggesting: u.suggesting }))
+  await $.ui.open({ id: PANEL_PANE, title: 'ctx-handoff', columns: PANEL_COLUMNS })
+  return { text: t().panelCmd.opened }
 }
 
 async function guardSummary($: EngineInterface) {
@@ -743,8 +746,11 @@ async function recordHit($: EngineInterface, id: number, tool: string, input: st
 }
 
 // ---------- 面板：/handoff panel，看最近整理的變動、刪掉記錯的筆記、核准守門 ----------
-// 畫在輸入框上方（AbovePrompt），不用 Pane：終端機全螢幕版面的 Pane 一定停靠在側邊
+// 畫成 Pane：終端機全螢幕版面（110 欄以上）停靠在對話右側、上下佔滿；其他情況引擎放在輸入框上方
 // 畫面只讀 $.state 裡的快照：重畫不碰檔案與 store，按鈕不會等 I/O 才有反應
+const PANEL_PANE = 'ctx-handoff-panel'
+// 停靠時請求的內文寬度（格數）；使用者拖過的寬度優先
+const PANEL_COLUMNS = 56
 const panelUi = atom({ plugin: 'ctx-handoff', key: 'panelUi' } as const, { open: false, tab: 'guard', expanded: [], suggesting: false })
 const panelData = atom({ plugin: 'ctx-handoff', key: 'panelData' } as const, null)
 
@@ -1013,7 +1019,6 @@ function panelActions($: EngineInterface): PanelActions {
     setting: (key, dir) => run(() => changeSetting($, key, dir)),
     resetSetting: key => run(() => resetSetting($, key)),
     keep: head => run(() => keepNote($, head)),
-    close: () => setUi(u => ({ ...u, open: false })),
   }
 }
 
@@ -1106,6 +1111,12 @@ export const register: Register = on => {
     try {
       await showDistillStatus($)
     } catch {}
+    // 面板 pane 已不在（熱重載或重開時被引擎收掉）：停止重算快照
+    try {
+      if ((await read($, panelUi)).open && !(await $.ui.panes()).some(p => p.id === PANEL_PANE)) {
+        await update($, panelUi, u => ({ ...u, open: false }))
+      }
+    } catch {}
     // 熱重載也會跑到這裡：接回被清掉的閒置計時
     try {
       await resumeSchedule($)
@@ -1188,15 +1199,22 @@ export const register: Register = on => {
     return watchCall(e, r.deny === undefined ? { ...r, context: [...(r.context ?? []), head] } : r)
   })
 
-  // 面板沒開、或問卷佔著輸入框上方時，交給下層（其他 plugin 或引擎自己的）
-  // 只讀 $.state（讀了就訂閱，寫入時自動重畫），不讀檔
-  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+  // 面板（Pane）只讀 $.state（讀了就訂閱，寫入時自動重畫），不讀檔
+  on('ui.render', { component: 'Pane', requestId: PANEL_PANE }, async ($, e) => {
     await initLang($)
     const ui = await read($, panelUi)
-    const data = ui.open && !e.props.hasSurvey ? await read($, panelData) : null
+    const data = await read($, panelData)
+    const elements = $.ui.resolve(e)
+    // 開面板前一定先備好快照；萬一沒有，先顯示一個佔位
     return data
-      ? panelTree($.ui.resolve(e), { ...data, ...ui, columns: e.props.bodyColumns }, panelActions($))
-      : next(e)
+      ? panelTree(elements, { ...data, ...ui, columns: e.props.bodyColumns }, panelActions($))
+      : panelLoading(elements)
+  })
+
+  // 使用者按引擎的關閉鈕、或 /handoff panel 關掉時：停止重算快照
+  on('ui.close', { id: PANEL_PANE }, async ($, e, next) => {
+    await update($, panelUi, u => ({ ...u, open: false }))
+    return next(e)
   })
 
   on('turn.complete', async ($, e, next) => {
