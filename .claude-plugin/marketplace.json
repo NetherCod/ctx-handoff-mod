@@ -9,7 +9,7 @@
     {
       "name": "ctx-handoff",
       "source": "./",
-      "description": "Hands off to a fresh conversation when context fills up, keeps the cache warm while you're away, and turns what you teach Claude into project notes"
+      "description": "Turns what you teach Claude into project notes, catches its usual slips, keeps the cache warm while you're away, and picks long sessions back up"
     }
   ]
 }
