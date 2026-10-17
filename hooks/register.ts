@@ -5,7 +5,7 @@ import { panelTree, showSetting } from './panel'
 import type { PanelActions } from './panel'
 import { getLang, pickLang, setLang, t } from './i18n'
 import type { Lang } from './i18n'
-import { addRejected, applyActions, distillPrompt, guardAnswers, guardPromotions, latestProgress, looksSecret, parseActions, squash } from './distill'
+import { addRejected, applyActions, distillPrompt, guardAnswers, guardPromotions, isQuoted, latestProgress, looksSecret, parseActions, squash } from './distill'
 import type { Action, Rejected } from './distill'
 import { progressForPrompt, progressKey, progressOffer, withOffered } from './progress'
 import type { Progress, ProgressFields } from './progress'
@@ -193,6 +193,14 @@ async function readText($: EngineInterface, path: string) {
   try { return await $.fs.read(path) } catch { return '' }
 }
 
+async function readNotes($: EngineInterface, path: string) {
+  try { return await $.fs.read(path) } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    if (/(?:^|\$\.fs\.read: )ENOENT(?:$|:|,)/.test(message)) return ''
+    throw err
+  }
+}
+
 // 工作區：session 啟動的資料夾；從 git worktree 啟動時算主工作樹（.git 是檔案：gitdir: <主工作樹>/.git/worktrees/<名稱>）。
 // 不用 $.session.repo()：它依目前工作目錄判斷，會跟著 Bash 的 cd 變
 async function workspace($: EngineInterface) {
@@ -270,8 +278,10 @@ async function distill($: EngineInterface, why: string, queue = true, snap?: Dis
     const transcript = transcriptOf(rows, prev?.anchor)
     // quote 的比對對象：使用者自己送出的訊息（本程式注入的經驗與 handoff 不算）
     const userText = squash(rows.filter(r => r.role === 'user' && !r.text.startsWith(NOTE_TAG) && !r.text.startsWith(tag)).map(r => r.text).join('\n'))
+    const currentUserText = prev?.anchor && !transcript.found ? ''
+      : squash(transcript.rows.filter(r => r.role === 'user' && !r.text.startsWith(NOTE_TAG) && !r.text.startsWith(tag)).map(r => r.text).join('\n'))
     const file = await notesFile($)
-    const original = await readText($, file)
+    const original = await readNotes($, file)
     const notes = parseNotes(original)
     // 上次整理之後被刪掉的記憶留墓碑（面板、tools/notes.mjs、直接改檔都算），這次不讓整理加回
     const tk = tombKey(await projectKey($))
@@ -301,12 +311,18 @@ async function distill($: EngineInterface, why: string, queue = true, snap?: Dis
     const parsed = parseActions(r.text, notes, userText, candidates.map(c => c.id), drafts.map(d => d.id))
     const rejected = parsed.rejected
     const actions = (await checkPromotions($, parsed.actions, rejected)).filter(a => {
-      if (a.op !== 'add_memory' || !isBuried(tombs, a.title, a.quote !== undefined)) return true
+      if (a.op !== 'add_memory' || !isBuried(tombs, a.title, a.quote !== undefined && isQuoted(a.quote, currentUserText))) return true
       addRejected(rejected, t().reject.buried(a.title), JSON.stringify(a))
       return false
     })
+    if (actions.length === 0 && rejected.count > 0) {
+      const usage = describeUsage({ input: r.usage.input_tokens, cacheRead: r.usage.cache_read_input_tokens, cacheCreation: r.usage.cache_creation_input_tokens, output: r.usage.output_tokens, ms: now - started })
+      await $.store.set(`distill:last:${await projectKey($)}`, { at: now, why, changes: [], file, usage, rejected } satisfies DistillLast)
+      await fail(t().distill.noUsableActions)
+      return r
+    }
     // 整理期間經驗檔被改過：編號對不上，這次不寫也不推進進度，下次重新整理同一段
-    if ((await readText($, file)) !== original) {
+    if ((await readNotes($, file)) !== original) {
       const reason = t().distill.edited(file)
       $.ui.log(t().distill.skipLog(why, reason))
       await $.store.set(`distill:error:${await projectKey($)}`, { at: now, why, reason })
@@ -374,7 +390,7 @@ async function distillStatus($: EngineInterface) {
   const d = (await $.store.get(`distill:last:${pk}`)) as DistillLast | undefined
   const err = (await $.store.get(`distill:error:${pk}`)) as DistillError | undefined
   const file = await notesFile($)
-  const notes = parseNotes(await readText($, file))
+  const notes = parseNotes(await readNotes($, file))
   const today = localStamp(await $.clock.now()).slice(0, 10)
   return distillStatusText({ on, d, err, file, notes, today, since: on ? await sinceDistill($) : 0 })
 }
@@ -600,7 +616,7 @@ async function loadGuards($: EngineInterface) {
 
 async function guardCandidates($: EngineInterface) {
   const guards = await loadGuards($)
-  const notes = parseNotes(await readText($, await notesFile($)))
+  const notes = parseNotes(await readNotes($, await notesFile($)))
   return guardCandidatesOf(notes.rules, guards)
 }
 
@@ -750,7 +766,7 @@ const panelData = atom({ plugin: 'ctx-handoff', key: 'panelData' } as const, nul
 
 async function loadPanelData($: EngineInterface): Promise<PanelData> {
   const file = await notesFile($)
-  const notes = parseNotes(await readText($, file))
+  const notes = parseNotes(await readNotes($, file))
   const guards = await guardViews($)
   const d = (await $.store.get(`distill:last:${await projectKey($)}`)) as DistillLast | undefined
   return panelSnapshot(file, notes, guards, d, localStamp(await $.clock.now()).slice(0, 10), await settingRows($))
@@ -833,7 +849,7 @@ const setNote = ($: EngineInterface, note: string | undefined) =>
 async function keepNote($: EngineInterface, head: string) {
   if (rt.distilling) return t().panelCmd.busyKeep
   const file = await notesFile($)
-  const notes = parseNotes(await readText($, file))
+  const notes = parseNotes(await readNotes($, file))
   const m = notes.memory.find(x => memHead(x) === head)
   if (!m) return t().panelCmd.notFound
   const now = await $.clock.now()
@@ -845,7 +861,7 @@ async function keepNote($: EngineInterface, head: string) {
 async function dropNote($: EngineInterface, key: string) {
   if (rt.distilling) return t().panelCmd.busyDrop
   const file = await notesFile($)
-  const original = await readText($, file)
+  const original = await readNotes($, file)
   const notes = parseNotes(original)
   const removed = withoutNote(notes, key)
   if (!removed) return t().panelCmd.notFound
@@ -1148,7 +1164,7 @@ export const register: Register = on => {
     await initLang($)
     try {
       const file = await notesFile($)
-      const notes = parseNotes(await readText($, file))
+      const notes = parseNotes(await readNotes($, file))
       const text = contextText(notes, file, localStamp(await $.clock.now()).slice(0, 10))
       const promote = await promoteBlock($, notes)
       const guardAsk = await guardAskBlock($, notes).catch(() => undefined)

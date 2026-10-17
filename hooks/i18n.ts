@@ -87,6 +87,7 @@ const zh = {
     queued: (n: number) => `${n} 項變動排入下一則訊息`,
     toast: (n: number, queued: boolean, file: string) => `經驗已更新 ${n} 項${queued ? '，會跟著你下一則訊息帶入' : ''}：${file}`,
     writeFailed: (err: string) => `寫檔失敗：${err}`,
+    noUsableActions: '整理輸出沒有可採用的動作；已保留這段對話供下次重試',
   },
 
   // 狀態列
@@ -472,6 +473,7 @@ const en: Messages = {
     queued: n => `${n} change${s(n)} queued for your next message`,
     toast: (n, queued, file) => `Notes updated: ${n} change${s(n)}${queued ? ', sent along with your next message' : ''}: ${file}`,
     writeFailed: err => `could not write the file: ${err}`,
+    noUsableActions: 'No usable actions in the notes output; the conversation is kept for retry',
   },
 
   status: {

@@ -157,7 +157,7 @@ export const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.replac
 
 // 使用者原話：以 … 分段，每段（去掉空白後）都要出現在使用者訊息裡
 export const squash = (s: string) => s.replace(/\s+/g, '')
-function isQuoted(quote: string, userText: string) {
+export function isQuoted(quote: string, userText: string) {
   const parts = quote.split(/…|\.\.\./).map(squash).filter(p => p.length >= 2)
   return parts.length > 0 && parts.every(p => userText.includes(p))
 }
@@ -348,7 +348,7 @@ export function parseActions(text: string, notes: Notes, userText = '', pending:
   }
   const start = text.indexOf(ACTIONS_START)
   if (start === -1) {
-    if (text.trim()) reject(t().reject.noMarker(ACTIONS_START))
+    reject(t().reject.noMarker(ACTIONS_START))
     return { actions, rejected }
   }
   let body = text.slice(start + ACTIONS_START.length)
@@ -366,6 +366,7 @@ export function parseActions(text: string, notes: Notes, userText = '', pending:
     if (typeof a === 'string') reject(a, line)
     else actions.push(a)
   }
+  if (end === -1 && actions.length === 0 && rejected.count === 0) reject(t().reject.noMarker(ACTIONS_END))
   return { actions, rejected }
 }
 

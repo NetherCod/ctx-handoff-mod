@@ -31,5 +31,5 @@ export function transcriptOf(rows: readonly Row[], anchor: string | undefined) {
   }
   let text = lines.join('\n')
   if (text.length > TRANSCRIPT_MAX_CHARS) text = `（前面省略 ${text.length - TRANSCRIPT_MAX_CHARS} 字）\n${text.slice(-TRANSCRIPT_MAX_CHARS)}`
-  return { text, found }
+  return { text, found, rows: rows.slice(start) }
 }
