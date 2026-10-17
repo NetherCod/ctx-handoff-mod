@@ -68,6 +68,20 @@ const zh = {
     heldHead: '---\n交接期間收到的使用者訊息：',
   },
 
+  background: {
+    pause: '暫停本對話離席工作',
+    resume: '恢復本對話離席工作',
+    bound: (file: string, sid: string) => `工作區筆記：${file}；本對話 ${sid}`,
+    away: (paused: boolean, next?: number) => `離席工作${paused ? '已暫停' : '啟用'}；${next === undefined ? '沒有排定計時器' : `下次 ${new Date(next).toLocaleString()}`}`,
+    task: (label: string, sid: string, phase: string, at: number) => `${label}：${phase}（來源 ${sid}，${new Date(at).toLocaleTimeString()} 開始）`,
+    distill: '筆記整理', handoff: '交接／刷新', idle: '待命',
+    idleTask: (label: string) => `${label}：待命`,
+    phases: { refresh: '刷新快取', generating: '產生摘要', submitting: '送出交接' },
+    collected: (at: number, usage: string, unknown: number) => `本對話背景用量（自 ${new Date(at).toLocaleString()} 更新起收集，非帳單）：${usage}；${unknown} 次請求用量未知`,
+    uncollected: '本對話背景用量尚未收集；不代表先前花費為零',
+    pending: (sid: string) => `未送達交接來源 ${sid}；/handoff resend ${sid}`,
+    history: '最近紀錄（診斷歷史不等同可恢復摘要）',
+  },
   // 背景整理
   distill: {
     why: {
@@ -118,6 +132,7 @@ const zh = {
 
   // 閒置刷新與離席
   idle: {
+    refreshSkipped: '略過快取刷新：目前 process 無可 fork 請求；等下一次主對話回應後再開始閒置計時',
     refresh: (n: number, max: number, read: number, create: number) => `快取刷新 ${n}/${max} cache_read=${read} cache_creation=${create}`,
     refreshFailed: (n: number, max: number, reason: string) => `快取刷新 ${n}/${max} 失敗：${reason}`,
     awaySavedLog: (tokens: number) => `離席 handoff 已存好（${tokens} tokens），不會自動 /clear`,
@@ -287,7 +302,8 @@ const zh = {
       '　/handoff distill          立刻整理這個工作區的經驗',
       '　/handoff resume           用離席 handoff 開新對話接續（會 /clear）',
       '　/handoff continue         放棄離席 handoff，在舊對話送出被攔下的訊息',
-      '　/handoff resend           重新送出沒送達的 handoff（不 /clear）',
+      '　/handoff resend [source-session-id] 重送沒送達的 handoff；重啟後指定來源',
+      '　/handoff away pause|resume 暫停／恢復本對話離席工作，筆記整理照常',
       '　/handoff refresh on|off   開關閒置時的快取刷新',
       '　/handoff distill on|off   開關背景整理',
       '　/handoff panel            開關輸入框上方的面板：最近整理的變動、刪掉記錯的筆記、核准守門、調整設定',
@@ -324,6 +340,9 @@ const zh = {
     resendIntro: '重新送出上一份 handoff。請讀完後用幾行回報你理解的現況與下一步，然後等使用者指示，不要直接動手。',
     nothingToResend: '這個 session 沒有可以重送的 handoff',
     pendingUnbound: '這份舊版未送達紀錄沒有工作區來源，無法安全重送；原紀錄仍保留',
+    awayUsage: '用法 /handoff away pause|resume（只控制本對話的離席工作，不停止筆記整理）',
+    commandFailed: (err: string) => `指令失敗，未回報完成：${err}`,
+    awayChanged: (paused: boolean): string => paused ? '已暫停本對話的離席工作；已發出的請求無法取消，仍可能計費，晚到結果不採用；筆記整理不受影響' : '已恢復本對話的離席工作，從現在重新計時',
     resendFailed: (err: string) => `重送失敗：${err}`,
     resending: '正在重新送出 handoff（不 /clear）',
     discarded: '已捨棄離席 handoff，繼續舊對話',
@@ -458,6 +477,20 @@ const en: Messages = {
     heldHead: '---\nMessages the user sent during the handoff:',
   },
 
+  background: {
+    pause: 'Pause away work for this session',
+    resume: 'Resume away work for this session',
+    bound: (file, sid) => `Workspace notes: ${file}; this session ${sid}`,
+    away: (paused, next) => `Away work ${paused ? 'paused' : 'enabled'}; ${next === undefined ? 'no timer scheduled' : `next ${new Date(next).toLocaleString()}`}`,
+    task: (label, sid, phase, at) => `${label}: ${phase} (source ${sid}, started ${new Date(at).toLocaleTimeString()})`,
+    distill: 'Notes update', handoff: 'Handoff / refresh', idle: 'idle',
+    idleTask: label => `${label}: idle`,
+    phases: { refresh: 'refreshing cache', generating: 'generating summary', submitting: 'submitting handoff' },
+    collected: (at, usage, unknown) => `Session background usage (collected since ${new Date(at).toLocaleString()} after this update, not a bill): ${usage}; ${unknown} requests with unknown usage`,
+    uncollected: 'No background usage collected for this session yet; earlier cost is not known to be zero',
+    pending: sid => `Undelivered handoff source ${sid}; /handoff resend ${sid}`,
+    history: 'Recent records (diagnostic history is not a recoverable summary)',
+  },
   distill: {
     why: {
       idle: 'idle refresh',
@@ -504,6 +537,7 @@ const en: Messages = {
   },
 
   idle: {
+    refreshSkipped: 'Cache refresh skipped: this process has no request to fork; idle timing resumes after the next main conversation response',
     refresh: (n, max, read, create) => `cache refresh ${n}/${max} cache_read=${read} cache_creation=${create}`,
     refreshFailed: (n, max, reason) => `cache refresh ${n}/${max} failed: ${reason}`,
     awaySavedLog: tokens => `away handoff saved (${tokens} tokens), will not /clear automatically`,
@@ -663,7 +697,8 @@ const en: Messages = {
       '  /handoff distill          update this workspace\'s notes now',
       '  /handoff resume           continue from the away handoff in a new conversation (does /clear)',
       '  /handoff continue         drop the away handoff and send the held message in the old conversation',
-      '  /handoff resend           resend a handoff that did not arrive (no /clear)',
+      '  /handoff resend [source-session-id] resend an undelivered handoff; specify its source after a restart',
+      '  /handoff away pause|resume pause or resume away work for this session; notes keep running',
       '  /handoff refresh on|off   turn the idle cache refresh on or off',
       '  /handoff distill on|off   turn background notes on or off',
       '  /handoff panel            toggle the panel above the input: latest notes changes, delete wrong notes, approve guards, settings',
@@ -698,6 +733,9 @@ const en: Messages = {
     resendIntro: 'Resending the previous handoff. Read it, tell me in a few lines the current state and next step as you understand them, then wait for the user\'s instructions. Do not start working yet.',
     nothingToResend: 'No handoff to resend in this session',
     pendingUnbound: 'This older pending record has no workspace source and cannot be resent safely; it is kept unchanged',
+    awayUsage: 'Usage: /handoff away pause|resume (this session only; notes updates keep running)',
+    commandFailed: err => `Command failed; completion was not reported: ${err}`,
+    awayChanged: paused => paused ? 'Away work paused for this session. Requests already sent cannot be cancelled and may still cost tokens; late results are ignored. Notes updates keep running' : 'Away work resumed for this session; the idle timer starts again now',
     resendFailed: err => `resend failed: ${err}`,
     resending: 'Resending the handoff (no /clear)',
     discarded: 'Away handoff discarded, staying in the old conversation',

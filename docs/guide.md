@@ -103,6 +103,7 @@ You won't need these in normal use. If `/handoff` is taken by your own command o
 | `/handoff distill` | Update the project notes now |
 | `/handoff resume` / `continue` | After being away: start fresh from the summary, or stay |
 | `/handoff resend [source-session-id]` | Send an undelivered summary again; specify its source session after a restart, in the same workspace |
+| `/handoff away pause\|resume` | Pause away work for this session or restart its idle timer now; notes updates keep running |
 | `/handoff refresh on\|off`, `distill on\|off` | Turn cache keeping or project notes on or off |
 | `/handoff guard` | List guards; `suggest` drafts new ones, `on\|off\|drop N` approves, turns off or deletes one, `mode N deny\|remind` switches between blocking and reminding |
 

@@ -20,7 +20,7 @@ import { DISTILL_EFFORT, DISTILL_MAX_TOKENS, DISTILL_TIMEOUT_MS, GUARD_MAX_TOKEN
 import { resetRuntime, rt } from './runtime'
 import { doneCheck, freshWork, noteCall, trackFailure } from './loops'
 import { clearNext, noteStep, peekNext, resolveReplyLang, takePending } from './lang'
-import { addStat, awayKey, describeUsage, pendingKey, pruneSeen, statsKey } from './records'
+import { addBackgroundUsage, addStat, awayKey, describeUsage, pendingKey, pruneSeen, statsKey } from './records'
 import type { Away, DistillError, DistillLast, HandoffError, Kind, PendingSubmit, Saved, Stats, Usage } from './records'
 import { HANDOFF_PROMPT, forkFailure, heldBlock } from './handoff'
 import { buryMissing, isBuried, memTitles, tombKey } from './tombstones'
@@ -75,8 +75,41 @@ async function within<T, F>($: EngineInterface, p: Promise<T>, ms: number, fallb
 
 type ForkResult = Awaited<ReturnType<EngineInterface['model']['fork']>>
 type ForkOutcome = ForkResult | { isAnswered: false; reason: 'timeout' }
-const forkWithin = ($: EngineInterface, prompt: string, ms: number): Promise<ForkOutcome> =>
-  within($, $.model.fork({ prompt }), ms, { isAnswered: false as const, reason: 'timeout' as const })
+async function forkWithin($: EngineInterface, prompt: string, ms: number, sid: string): Promise<ForkOutcome> {
+  const started = await $.clock.now()
+  try {
+    const r = await within($, $.model.fork({ prompt }), ms, { isAnswered: false as const, reason: 'timeout' as const })
+    await recordUsage($, sid, started, 'usage' in r ? r.usage : undefined)
+    return r
+  } catch (err) { await recordUsage($, sid, started); throw err }
+}
+
+type ModelUsage = { input_tokens: number; output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number }
+async function recordUsage($: EngineInterface, sid: string, started: number, usage?: ModelUsage) {
+  try {
+  const now = await $.clock.now()
+  const project = await projectKey($)
+  const run = rt.statQueue.then(async () => {
+    try {
+      const key = `stats:session:${sid}`
+      const prev = (await $.store.get(key)) as Stats | undefined
+      const value = usage ? { input: usage.input_tokens, output: usage.output_tokens, cacheRead: usage.cache_read_input_tokens, cacheCreation: usage.cache_creation_input_tokens, ms: now - started } : undefined
+      await $.store.set(key, addBackgroundUsage(prev, now, project, value))
+    } catch { /* 只是記帳 */ }
+  })
+  rt.statQueue = run
+  await run
+  } catch { /* 只是記帳 */ }
+}
+
+async function completeBackground($: EngineInterface, request: Parameters<EngineInterface['model']['complete']>[0], sid: string) {
+  const started = await $.clock.now()
+  try {
+    const r = await $.model.complete(request)
+    await recordUsage($, sid, started, 'usage' in r ? r.usage : undefined)
+    return r
+  } catch (err) { await recordUsage($, sid, started); throw err }
+}
 
 // 工作區鍵：經驗檔所在目錄的名稱（<claude>/projects/<這一層>/memory/ctx-handoff.md）
 async function projectKey($: EngineInterface) {
@@ -122,7 +155,11 @@ async function recordFailure($: EngineInterface, kind: Kind, tokens: number | nu
 async function makeHandoff($: EngineInterface, kind: Kind, tokens: number | null, source?: { sid: string; activity: number }) {
   const sid = source?.sid ?? await $.session.id()
   const started = await $.clock.now()
-  const r = await forkWithin($, HANDOFF_PROMPT, HANDOFF_TIMEOUT_MS)
+  const task = { sid, phase: 'generating', at: started } satisfies NonNullable<typeof rt.handoffTask>
+  rt.handoffTask = task
+  await refreshPanel($)
+  try {
+  const r = await forkWithin($, HANDOFF_PROMPT, HANDOFF_TIMEOUT_MS, sid)
   if (source && (rt.activity !== source.activity || await $.session.id() !== sid)) {
     $.ui.log(t().idle.outdated)
     await stat($, 'away.stale')
@@ -151,6 +188,7 @@ async function makeHandoff($: EngineInterface, kind: Kind, tokens: number | null
   rt.lastHandoff = { text: r.text }
   $.ui.log(t().handoff.savedLog(kind, describeUsage(usage)))
   return r.text
+  } finally { if (rt.handoffTask === task) rt.handoffTask = undefined; await refreshPanel($) }
 }
 
 // $.prompt.submit 被別的 hook 丟棄時只回 { drop }、不會丟例外：沒送進對話，當成失敗
@@ -163,6 +201,10 @@ async function submitText($: EngineInterface, text: string) {
 // 失敗時回傳階段與原因（clear 失敗＝還在舊對話，pending 已刪；submit 失敗＝pending 留著給 /handoff resend）
 async function clearAndSubmit($: EngineInterface, text: string) {
   const sid = await $.session.id()
+  const task = { sid, phase: 'submitting', at: await $.clock.now() } satisfies NonNullable<typeof rt.handoffTask>
+  rt.handoffTask = task
+  await refreshPanel($)
+  try {
   const key = pendingKey(sid)
   await $.store.set(key, { text, project: await projectKey($) } satisfies PendingSubmit)
   await touchSeen($, key)
@@ -186,6 +228,7 @@ async function clearAndSubmit($: EngineInterface, text: string) {
   await $.store.delete(key)
   rt.myPending = undefined
   return undefined
+  } finally { if (rt.handoffTask === task) rt.handoffTask = undefined; await refreshPanel($) }
 }
 
 // ---------- 背景整理：位置與流程 ----------
@@ -204,7 +247,7 @@ async function readText($: EngineInterface, path: string) {
 async function readNotes($: EngineInterface, path: string) {
   try { return await $.fs.read(path) } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    if (/(?:^|\$\.fs\.read: )ENOENT(?:$|:|,)/.test(message)) return ''
+    if (/(?:^|\$\.fs\.read: )ENOENT(?:$|:|,)/.test(message) || /\$\.fs\.read\([\s\S]*\) failed: ENOENT$/.test(message)) return ''
     throw err
   }
 }
@@ -319,14 +362,16 @@ async function distill($: EngineInterface, why: string, queue = true, snap?: Dis
     // 守門草稿：整理從對話認出使用者要不要採用
     const drafts = (await loadGuards($)).filter(g => g.state === 'proposed').map(g => ({ id: `G${g.id}`, name: g.rule }))
     const started = await $.clock.now()
-    const r = await $.model.complete({
+    rt.distillTask = { sid, why, at: started }
+    await refreshPanel($)
+    const r = await completeBackground($, {
       model: cfg.notesModel,
       effort: DISTILL_EFFORT,
       maxTokens: DISTILL_MAX_TOKENS,
       timeoutMs: DISTILL_TIMEOUT_MS,
       system: distillPrompt(transcript.found ? prev?.anchor : undefined, notes, localStamp(started).slice(0, 10), progressForPrompt(await loadProgress($), started), candidates, await guidesText($), drafts, tombs.dead.map(d => d.title)),
       prompt: `=== 對話紀錄 ===\n${transcript.text || '（沒有新的對話內容）'}\n=== 對話紀錄結束 ===\n\n依系統指示輸出 ACTIONS。`,
-    })
+    }, sid)
     if (!r.isAnswered) {
       const reason = r.reason === 'api-error' ? `api-error ${r.status ?? ''} ${r.error}`.replace(/\s+/g, ' ')
         : r.reason === 'aborted' ? t().distill.timeout(DISTILL_TIMEOUT_MS / 60_000) : r.reason
@@ -404,7 +449,7 @@ async function distill($: EngineInterface, why: string, queue = true, snap?: Dis
     await $.store.delete(retryKey).catch(err => $.ui.log(t().distill.retryCleanup(String(err))))
     await stat($, 'distill.ok')
     // 寫成文字還擋不住的規則：背景起草守門，下一段新對話請 AI 問使用者（失敗不影響整理）
-    await autoDraftGuards($, updated, rows).catch(err => $.ui.log(t().guard.autoFailed(String(err))))
+    await autoDraftGuards($, updated, rows, sid).catch(err => $.ui.log(t().guard.autoFailed(String(err))))
     await refreshPanel($)
     $.ui.log(t().distill.doneLog(why, changes.length, rejected.count, file))
     // 先寫檔再排入；差異跟著下一則真正送進對話的訊息帶入（見 prompt.submit）
@@ -422,8 +467,10 @@ async function distill($: EngineInterface, why: string, queue = true, snap?: Dis
     return undefined
   } finally {
     rt.distilling = false
+    rt.distillTask = undefined
     done()
-    await showDistillStatus($)
+    await refreshPanel($)
+    await showDistillStatus($).catch(err => $.ui.log(t().distill.writeFailed(String(err))))
   }
 }
 
@@ -456,9 +503,29 @@ async function distillStatus($: EngineInterface) {
 
 // 到期時間與刷新次數另存 $.state：熱重載會清掉計時器與模組變數，session.start 依它重排
 const idleState = atom({ plugin: 'ctx-handoff', key: 'idle' } as const, null)
+const awayControl = atom({ plugin: 'ctx-handoff', key: 'awayControl' } as const, null)
+
+async function awayPaused($: EngineInterface) {
+  const saved = await read($, awayControl)
+  return saved?.sid === await $.session.id() && saved.paused
+}
+
+async function changeAway($: EngineInterface, paused: boolean) {
+  const sid = await $.session.id()
+  await update($, awayControl, () => ({ sid, paused }))
+  if (paused) {
+    rt.activity += 1
+    rt.idle?.cancel()
+    rt.idle = undefined
+    await update($, idleState, () => null)
+  } else await schedule($)
+  await refreshPanel($)
+  return t().cmd.awayChanged(paused)
+}
 
 async function schedule($: EngineInterface, delay = cfg.idleMs) {
   rt.idle?.cancel()
+  if (await awayPaused($)) { rt.idle = undefined; await update($, idleState, () => null); return }
   rt.idle = $.clock.after(delay, () => void onIdle($))
   const due = (await $.clock.now()) + delay
   await update($, idleState, () => ({ due, refreshes: rt.refreshes }))
@@ -479,21 +546,32 @@ async function onIdle($: EngineInterface) {
   await initLang($)
   rt.idle = undefined
   await update($, idleState, () => null)
-  if (rt.busy) return
+  if (rt.busy || await awayPaused($)) return
   const { context } = await $.session.usage()
   const tokens = context.tokens ?? 0
   if (tokens < cfg.minTokens) return
 
   if ((await isRefreshOn($)) && rt.refreshes < cfg.maxRefresh) {
+    const task = { sid, phase: 'refresh', at: await $.clock.now() } satisfies NonNullable<typeof rt.handoffTask>
+    rt.handoffTask = task
+    await refreshPanel($)
+    try {
     // 刷新用最便宜的 fork（只回 OK）讀一次快取；整理是另一個不帶歷史的請求，有新對話才跑
-    const r = await forkWithin($, '只回覆 OK', HANDOFF_TIMEOUT_MS)
+    const r = await forkWithin($, '只回覆 OK', HANDOFF_TIMEOUT_MS, sid)
+    if (rt.activity !== activity || await $.session.id() !== sid || await awayPaused($)) return
+    if (!r.isAnswered && r.reason === 'nothing-to-fork') {
+      $.ui.log(t().idle.refreshSkipped)
+      return
+    }
     if (await isDistillOn($)) await distill($, t().distill.why.idle)
+    if (rt.activity !== activity || await $.session.id() !== sid || await awayPaused($)) return
     rt.refreshes += 1
     $.ui.log(r.isAnswered
       ? t().idle.refresh(rt.refreshes, cfg.maxRefresh, r.usage.cache_read_input_tokens, r.usage.cache_creation_input_tokens)
       : t().idle.refreshFailed(rt.refreshes, cfg.maxRefresh, r.reason))
     await schedule($)
     return
+    } finally { if (rt.handoffTask === task) rt.handoffTask = undefined; await refreshPanel($) }
   }
 
   rt.busy = true
@@ -692,16 +770,16 @@ async function guardCandidates($: EngineInterface) {
 }
 
 // 請整理模型把規則寫成守門草稿（proposed），程式驗證格式並試比對這段對話跑過的工具呼叫
-async function draftGuards($: EngineInterface, candidates: Rule[], rows: readonly Row[]) {
+async function draftGuards($: EngineInterface, candidates: Rule[], rows: readonly Row[], sid: string) {
   const calls = rows.flatMap(r => r.toolUses)
-  const r = await $.model.complete({
+  const r = await completeBackground($, {
     model: cfg.notesModel,
     effort: DISTILL_EFFORT,
     maxTokens: GUARD_MAX_TOKENS,
     timeoutMs: DISTILL_TIMEOUT_MS,
     system: guardPrompt(candidates, [...new Set(calls.map(c => c.tool))]),
     prompt: '依系統指示輸出 ACTIONS。',
-  })
+  }, sid)
   if (!r.isAnswered) return { failed: r.reason }
   const { out, rejected } = parseGuards(r.text, new Set(candidates.map(c => c.name)))
   const guards = await loadGuards($)
@@ -713,7 +791,8 @@ async function draftGuards($: EngineInterface, candidates: Rule[], rows: readonl
 async function suggestGuards($: EngineInterface) {
   const candidates = await guardCandidates($)
   if (candidates.length === 0) return { text: `${t().guard.noCandidates(GUARD_MIN_COUNT)}\n${await guardList($)}` }
-  const d = await draftGuards($, candidates, (await $.session.messages()) as readonly Row[])
+  const sid = await $.session.id()
+  const d = await draftGuards($, candidates, (await $.session.messages()) as readonly Row[], sid)
   if ('failed' in d) return { text: `${t().guard.suggestFailed(String(d.failed))}` }
   const { added, rejected } = d
   await markTried($, candidates)
@@ -736,11 +815,11 @@ async function markTried($: EngineInterface, rules: Rule[]) {
 }
 
 // 整理完自動起草：只送還沒起草過、或起草後又被糾正（次數增加）的候選
-async function autoDraftGuards($: EngineInterface, notes: Notes, rows: readonly Row[]) {
+async function autoDraftGuards($: EngineInterface, notes: Notes, rows: readonly Row[], sid: string) {
   const tried = ((await $.store.get(await triedKey($))) as Record<string, number> | undefined) ?? {}
   const candidates = guardCandidatesOf(notes.rules, await loadGuards($)).filter(r => tried[r.name] !== r.count)
   if (candidates.length === 0) return
-  const d = await draftGuards($, candidates, rows)
+  const d = await draftGuards($, candidates, rows, sid)
   if ('failed' in d) { $.ui.log(t().guard.autoFailed(String(d.failed))); return }
   await markTried($, candidates)
   if (d.added.length > 0) $.ui.log(t().guard.autoDrafted(d.added.length))
@@ -840,7 +919,9 @@ async function loadPanelData($: EngineInterface): Promise<PanelData> {
   const notes = parseNotes(await readNotes($, file))
   const guards = await guardViews($)
   const d = (await $.store.get(`distill:last:${await projectKey($)}`)) as DistillLast | undefined
-  return panelSnapshot(file, notes, guards, d, localStamp(await $.clock.now()).slice(0, 10), await settingRows($))
+  const data = panelSnapshot(file, notes, guards, d, localStamp(await $.clock.now()).slice(0, 10), await settingRows($))
+  const background = await backgroundSnapshot($)
+  return { ...data, background: { paused: background.paused, lines: [...background.lines, ...background.history] } }
 }
 
 // 設定分頁的列：SETTINGS 的值加上兩個用指令也能切的開關（保持快取、專案筆記，存在 store 的 refresh／distill），依主題排
@@ -1083,6 +1164,7 @@ function panelActions($: EngineInterface): PanelActions {
   }
   const setUi = (fn: (u: PanelUi) => PanelUi) => update($, panelUi, fn)
   return {
+    away: paused => run(() => changeAway($, paused)),
     guard: (id, action) => run(async () => {
       const g = await changeGuard($, id, action)
       return g ? t().guard.panelDone(id, action) : t().guard.missing(String(id))
@@ -1409,24 +1491,59 @@ export const register: Register = on => {
   for (const command of ['handoff', 'ctx-handoff']) on('command.run', { command }, async ($, e) => {
     await initLang($)
     const [sub = '', arg = '', ...rest] = e.args.trim().split(/\s+/)
+    try {
     switch (sub) {
       case '': return { text: await status($) }
-      case 'now': return handoffNow($)
-      case 'dry': return handoffDry($)
-      case 'distill': return distillCommand($, arg)
-      case 'resume': return resume($)
-      case 'continue': return keepOld($)
-      case 'resend': return resend($, arg)
-      case 'refresh': return refreshCommand($, arg)
+      case 'now': return await handoffNow($)
+      case 'dry': return await handoffDry($)
+      case 'distill': return await distillCommand($, arg)
+      case 'resume': return await resume($)
+      case 'continue': return await keepOld($)
+      case 'resend': return await resend($, arg)
+      case 'away': return { text: arg === 'pause' || arg === 'resume' ? await changeAway($, arg === 'pause') : t().cmd.awayUsage }
+      case 'refresh': return await refreshCommand($, arg)
       case 'guard': {
         const r = await guardCommand($, [arg, ...rest])
         await refreshPanel($)
         return r
       }
-      case 'panel': return togglePanel($)
+      case 'panel': return await togglePanel($)
       default: return { text: `${t().cmd.unknown(sub)}\n${usageText()}` }
     }
+    } catch (err) { return { text: t().cmd.commandFailed(String(err)) } }
   })
+}
+
+async function backgroundSnapshot($: EngineInterface) {
+  const sid = await $.session.id()
+  const file = await notesFile($)
+  const project = await projectKey($)
+  const paused = await awayPaused($)
+  const idle = await read($, idleState)
+  const stats = (await $.store.get(`stats:session:${sid}`)) as Stats | undefined
+  const background = stats?.background?.project === project ? stats.background : undefined
+  const m = t().background
+  const pendingSid = rt.myPending?.sid ?? sid
+  const pending = (await $.store.get(pendingKey(pendingSid))) as PendingSubmit | undefined
+  const task = rt.distillTask
+  const handoff = rt.handoffTask
+  const lines = [
+    m.bound(file, sid), m.away(paused, rt.idle && !paused ? idle?.due : undefined),
+    task ? m.task(m.distill, task.sid, task.why, task.at) : m.idleTask(m.distill),
+    handoff ? m.task(m.handoff, handoff.sid, m.phases[handoff.phase], handoff.at) : m.idleTask(m.handoff),
+    background ? m.collected(background.since, describeUsage(background.usage), background.unknownResults) : m.uncollected,
+    ...(pending?.project === project ? [m.pending(pendingSid)] : []),
+  ]
+  const saved = ((await $.store.get(`handoffs:${project}`)) as Saved[] | undefined)?.at(-1)
+  const error = (await $.store.get(`handoff:error:${project}`)) as HandoffError | undefined
+  const distillError = (await $.store.get(`distill:error:${project}`)) as DistillError | undefined
+  const history = [
+    m.history,
+    ...(saved ? [t().cmd.latest({ at: new Date(saved.at).toLocaleString(), kind: saved.kind, tokens: String(saved.tokens ?? '?') })] : []),
+    ...(error ? [t().cmd.latestFailure(new Date(error.at).toLocaleString(), error.kind, error.reason)] : []),
+    ...(distillError ? [t().distillStatus.failed(new Date(distillError.at).toLocaleString(), distillError.why, distillError.reason)] : []),
+  ]
+  return { paused, lines, history }
 }
 
 async function status($: EngineInterface) {
@@ -1436,6 +1553,7 @@ async function status($: EngineInterface) {
   const list = ((await $.store.get(`handoffs:${pk}`)) as Saved[] | undefined) ?? []
   const herr = (await $.store.get(`handoff:error:${pk}`)) as HandoffError | undefined
   return statusText({
+    background: (await backgroundSnapshot($)).lines,
     tokens: context.tokens, window: context.window, refreshOn: await isRefreshOn($), away, last: list.at(-1), herr,
     distill: await distillStatus($), guards: await guardSummary($), progress: await progressStatus($), replyLang: await replyLangLabel($),
   })

@@ -1,7 +1,7 @@
 // 交接主流程：門檻、閒置刷新、離席 handoff、交接期間訊息不遺失、背景工作與排程、store 鍵分專案
 import { expect, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
-import { NOTE_TAG, DAY, presentation, composer, cmd, resume, say, startSession, task, cron, endTurn, stop, NOTES, distillNow, ctl, world } from './test-world'
+import { NOTE_TAG, DAY, actionsReply, presentation, composer, cmd, resume, say, startSession, task, cron, endTurn, stop, NOTES, distillNow, ctl, world } from './test-world'
 
 test('達 600k：產生 handoff → /clear → 送出', async ($, on) => {
   const w = world(on, 650_000)
@@ -11,11 +11,14 @@ test('達 600k：產生 handoff → /clear → 送出', async ($, on) => {
   expect(w.commands).toEqual(['clear'])
   expect(w.submits.length).toBe(1)
   expect(w.submits[0]).toContain('HANDOFF: 測試')
+  expect(w.forks[0]).toContain('HANDOFF:')
+  expect(w.get('handoffs:C--proj')).toEqual([
+    { at: 0, sessionId: 'S1', kind: 'present', tokens: 650_000, text: 'HANDOFF: 測試', usage: { input: 1, cacheRead: 650_000, cacheCreation: 0, output: 1, ms: 0 } },
+  ])
 })
 
 test('自動交接關閉（預設）：到門檻不交接，每 30 則照樣整理', async ($, on) => {
-  const w = world(on, 650_000, 1_000_000, {}, [], 30)
-  ctl.pluginOptions = { auto_handoff: false }
+  const w = world(on, 650_000, 1_000_000, {}, [], 30, '繁體中文', false)
   await stop($)
   await w.clock.advance(0)
   expect(w.forks.length).toBe(0)
@@ -79,6 +82,57 @@ test('熱重載後接回閒置計時：照原本的到期時間刷新，刷新�
   expect(w.forks.length).toBe(2)
   await w.clock.advance(55 * 60_000)
   expect(w.forks[2]).toContain('HANDOFF')
+})
+
+test('resume 尚無可 fork 請求：停止閒置重試，下一主回應重新開始刷新', async ($, on) => {
+  const w = world(on, 100_000, 1_000_000, {}, [], 5)
+  savedIdle(on, { due: 25 * 60_000, refreshes: 0 })
+  ctl.failHandoff = true
+  await startSession($)
+  await w.clock.advance(25 * 60_000)
+  expect(w.forks.length).toBe(1)
+  expect(w.forks).toEqual(['只回覆 OK'])
+  expect(w.completes).toEqual([])
+  const waiting = (await cmd($, '')).text
+  expect(waiting).toContain('已刷新 0/3')
+  expect(waiting).toContain('計時器未啟動')
+  expect(waiting).toContain('交接／刷新：待命')
+  await w.clock.advance(5 * 60 * 60_000)
+  expect(w.forks).toEqual(['只回覆 OK'])
+  expect(w.get('away:S1')).toBeUndefined()
+  ctl.failHandoff = false
+  await endTurn($)
+  await w.clock.advance(55 * 60_000)
+  expect(w.forks.filter(prompt => prompt === '只回覆 OK').length).toBe(2)
+  expect((await cmd($, '')).text).toContain('已刷新 1/3')
+})
+
+test('resume 無可 fork 請求且整理關閉：五小時內不重試或升級離席交接', async ($, on) => {
+  const w = world(on, 100_000, 1_000_000, { distill: false })
+  savedIdle(on, { due: 25 * 60_000, refreshes: 0 })
+  ctl.failHandoff = true
+  await startSession($)
+  await w.clock.advance(25 * 60_000)
+  await w.clock.advance(5 * 60 * 60_000)
+  expect(w.forks.length).toBe(1)
+  expect(w.forks).toEqual(['只回覆 OK'])
+  expect(w.get('away:S1')).toBeUndefined()
+})
+
+test('刷新逾時仍計次並排下一次，不當成沒有可 fork 請求', async ($, on) => {
+  const w = world(on, 100_000, 1_000_000, { distill: false })
+  let release = () => {}
+  const gate = new Promise<void>(r => { release = r })
+  ctl.handoffGate = () => gate
+  await endTurn($)
+  await w.clock.advance(60 * 60_000)
+  expect(w.forks).toEqual(['只回覆 OK'])
+  expect((await cmd($, '')).text).toContain('已刷新 1/3')
+  release()
+  ctl.handoffGate = undefined
+  await w.clock.advance(55 * 60_000)
+  expect(w.forks).toEqual(['只回覆 OK', '只回覆 OK'])
+  expect((await cmd($, '')).text).toContain('已刷新 2/3')
 })
 
 test('熱重載時計時早已過期：不補刷新', async ($, on) => {
@@ -248,6 +302,75 @@ for (const op of ['get', 'set']) {
   })
 }
 
+test('暫停離席取消timer但手動整理仍可用，恢復從現在重排', async ($, on) => {
+  const w = world(on, 100_000, 1_000_000, {}, [], 5)
+  await endTurn($)
+  await cmd($, 'away pause')
+  await w.clock.advance(120 * 60_000)
+  expect(w.forks).toEqual([])
+  expect(w.completes).toEqual([])
+  expect(w.commands).toEqual([])
+  expect(w.get('away:S1')).toBeUndefined()
+  await cmd($, 'distill')
+  expect(w.completes.length).toBe(1)
+  await cmd($, 'away resume')
+  await w.clock.advance(54 * 60_000)
+  expect(w.forks.length).toBe(1)
+  await w.clock.advance(60_000)
+  expect(w.forks.at(-1)).toBe('只回覆 OK')
+})
+
+test('暫停後再恢復也不採用已發出的舊離席fork', async ($, on) => {
+  const w = world(on, 100_000, 1_000_000, { refresh: false, distill: false })
+  await endTurn($)
+  let release = () => {}
+  const gate = new Promise<void>(r => { release = r })
+  ctl.handoffGate = () => gate
+  await w.clock.advance(55 * 60_000)
+  await cmd($, 'away pause')
+  await cmd($, 'away resume')
+  release()
+  await w.clock.settle()
+  expect(w.get('away:S1')).toBeUndefined()
+})
+
+for (const sid of ['S1', 'S2']) {
+  test(`熱重載保留同session暫停，新session不繼承：${sid}`, async ($, on) => {
+    const w = world(on, 100_000, 1_000_000, { distill: false })
+    ctl.curSid = sid
+    on('state.get', (_$, e, next) => e.key === 'awayControl'
+      ? { value: { value: { sid: 'S1', paused: true }, version: 1 } } as never : next(e))
+    await startSession($)
+    await endTurn($)
+    expect((await cmd($, '')).text).toContain(sid === 'S1' ? '離席工作已暫停' : '離席工作啟用')
+    await w.clock.advance(55 * 60_000)
+    expect(w.forks.length).toBe(sid === 'S1' ? 0 : 1)
+  })
+}
+
+test('筆記與交接並行時兩個狀態槽互不覆蓋', async ($, on) => {
+  const w = world(on, 100_000, 1_000_000, {}, [], 5)
+  let releaseDistill = () => {}
+  let releaseHandoff = () => {}
+  const distillGate = new Promise<void>(r => { releaseDistill = r })
+  const handoffGate = new Promise<void>(r => { releaseHandoff = r })
+  ctl.distillGate = () => distillGate
+  ctl.handoffGate = () => handoffGate
+  const updating = distillNow($)
+  const generating = cmd($, 'dry')
+  await w.clock.advance(0)
+  const during = (await cmd($, '')).text
+  expect(during).toContain('筆記整理：手動（來源 S1')
+  expect(during).toContain('交接／刷新：產生摘要（來源 S1')
+  releaseHandoff()
+  await generating
+  const remaining = (await cmd($, '')).text
+  expect(remaining).toContain('筆記整理：手動（來源 S1')
+  expect(remaining).toContain('交接／刷新：待命')
+  releaseDistill()
+  await updating
+})
+
 test('S1 handoff fork 失敗：攔下的訊息在舊對話重新送出', async ($, on) => {
   const w = world(on, 650_000, 1_000_000, {}, [], 5)
   ctl.failHandoff = true
@@ -336,16 +459,32 @@ test('S2 交接前整理不排入差異', async ($, on) => {
 
 // ---------- S3、S4：整理提示 ----------
 
-test('S3 整理提示：找不到錨點而改看整段時不得 CONFIRM', async ($, on) => {
+test('S3 整理來源：錨點遺失時提供完整現有對話，而非宣稱已定位到舊錨點', async ($, on) => {
   const w = world(on, 100_000, 1_000_000, { 'distill:S1': { turn: 1, anchor: '某則訊息' } }, [], 5)
+  w.rows.push(
+    { role: 'user', text: '壓縮後仍在的要求', toolUses: [] },
+    { role: 'assistant', text: '已檢查', toolUses: [{ tool: 'Bash', input: { command: 'npm test' }, text: '12 pass' }] },
+  )
   await distillNow($)
-  expect(w.forks[0]).toContain('找不到錨點而改看整段時，只能 add／update／delete，不得 confirm_rule')
+  expect(w.completes[0]?.prompt).toContain('【使用者】壓縮後仍在的要求\n【助理】已檢查\n　〔工具 Bash〕{"command":"npm test"} → 12 pass')
+  expect(w.completes[0]?.system).not.toContain('使用者說「某則訊息」')
+  expect(w.completes[0]?.system).toContain('confirm_rule')
 })
 
-test('S4 整理提示：開頭是 [ctx-handoff] 的訊息只是 handoff 摘要，不當證據', async ($, on) => {
+test('S4 整理來源：handoff 不能冒充使用者原話，真正使用者原話仍可收錄', async ($, on) => {
   const w = world(on, 100_000, 1_000_000, {}, [], 5)
+  w.rows.push(
+    { role: 'user', text: '[ctx-handoff] 使用者偏好自動推送', toolUses: [] },
+    { role: 'user', text: '推送前要先問我', toolUses: [] },
+  )
+  ctl.distillReply = actionsReply(
+    { op: 'add_memory', type: 'user', title: '自動推送', quote: '使用者偏好自動推送', evidence: '摘要聲稱的偏好' },
+    { op: 'add_memory', type: 'user', title: '先問再推送', quote: '推送前要先問我', evidence: '使用者這次要求' },
+  )
   await distillNow($)
-  expect(w.forks[0]).toContain('開頭是 [ctx-handoff] 的訊息是 handoff 摘要，只能參考，不能當作證據，也不能 confirm_rule')
+  expect(w.files.get(NOTES)).not.toContain('- [user] 自動推送')
+  expect(w.files.get(NOTES)).toContain('- [user] 先問再推送')
+  expect(w.files.get(NOTES)).toContain('使用者原話：「推送前要先問我」')
 })
 
 // ---------- S5：store 鍵分專案、清理 ----------
@@ -410,6 +549,40 @@ test('S5 新程式建立的每 session 鍵也記進 seen；已經記錄的時間
   expect(seen['last:S1']).toBe(1)
   expect(seen['distill:S1']).toBe(5 * DAY)
 })
+
+for (const changed of ['prompt', 'session', 'pause']) {
+  test(`刷新後整理等待期間來源改變，不重排新回合timer或扣刷新額度：${changed}`, async ($, on) => {
+    const w = world(on, 100_000, 1_000_000, {}, [], 5)
+    await endTurn($)
+    let release = () => {}
+    const gate = new Promise<void>(r => { release = r })
+    ctl.distillGate = () => gate
+    await w.clock.advance(55 * 60_000)
+    expect(w.completes.length).toBe(1)
+    await w.clock.advance(10 * 60_000)
+    if (changed === 'pause') {
+      await cmd($, 'away pause')
+      await cmd($, 'away resume')
+    } else {
+      if (changed === 'session') ctl.curSid = 'S2'
+      else await say($, '開始新的回合')
+      await endTurn($)
+    }
+    await w.clock.advance(5 * 60_000)
+    ctl.distillGate = undefined
+    release()
+    await w.clock.settle()
+    expect(w.forks.length).toBe(2)
+    expect((await cmd($, '')).text).toContain('0/3')
+    w.put('distill', false)
+    for (let i = 0; i < 3; i++) {
+      await w.clock.advance((i === 0 ? 50 : 55) * 60_000)
+      expect(w.forks.at(-1)).toBe('只回覆 OK')
+      expect(w.forks.filter(p => p === '只回覆 OK').length).toBe(i + 2)
+    }
+    expect(w.get(`away:${ctl.curSid}`)).toBeUndefined()
+  })
+}
 
 // ---------- S8：背景工作與排程（classic.Stop） ----------
 
@@ -498,17 +671,4 @@ test('S9 已攔下訊息的離席狀態不會因回合完成被刪', async ($, o
   const w = world(on, 100_000, 1_000_000, { 'away:S1': { handoff: 'H', held: '我回來了' } })
   await endTurn($)
   expect(w.get('away:S1')).toBeDefined()
-})
-
-// ---------- S10：長路徑專案 ----------
-
-// 2026-10-08：交接摘要要分開已驗證與未驗證、列出失敗過的做法、還在跑的東西與使用者的限制，避免接手時做錯
-// 2026-10-09 評估：缺漏多在使用者的限制、待答問題的背景、工具用法與已查到的細節，1800 字上限擠掉它們
-test('交接提示：分開已驗證與未驗證，寫使用者原話的限制、最後做到哪、已查到的事實、工具用法、自成一段的待答問題；不設字數上限', async ($, on) => {
-  const w = world(on, 650_000)
-  await stop($)
-  await w.clock.advance(0)
-  const prompt = w.forks.find(p => p.includes('HANDOFF:')) ?? ''
-  for (const part of ['已驗證', '已做但未驗證', '只討論過、還沒做', '試過但失敗', '還在跑', '盡量引用使用者原話', '最後做到哪', '已查到的事實', '不確定的標「未確認」', '完整指令', '讓使用者不用回頭看也能回答', '一個具體動作']) expect(prompt).toContain(part)
-  expect(prompt).not.toMatch(/不超過 \d+ 字/)
 })

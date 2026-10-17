@@ -154,19 +154,18 @@ test('同一段對話只提供一次（compaction 後 prompt.context 重算也�
   expect((w.get(KEY) as Progress).offered).toEqual(['S1', 'S2'])
 })
 
-test('不提供：超過 24 小時、同一個 session 留下的、已交接的、設定關閉', async ($, on) => {
-  const w = world(on, 100_000, 1_000_000, { [KEY]: OLD })
-  await w.clock.advance(DAY)
-  expect(await blockOf($)).toContain('24 小時前')
-  await w.clock.advance(1)
-  expect(await blockOf($)).toBeUndefined()
-  w.put(KEY, { ...OLD, at: w.clock.now() })
-  ctl.curSid = 'S0'
-  expect(await blockOf($)).toBeUndefined()
-  ctl.curSid = 'S1'
-  w.put(KEY, { ...OLD, at: w.clock.now(), handed: true })
-  expect(await blockOf($)).toBeUndefined()
-})
+for (const [reason, progress, age] of [
+  ['超過 24 小時', OLD, DAY + 1],
+  ['同一個 session 留下的', { ...OLD, sid: 'S1' }, 0],
+  ['已交接的', { ...OLD, handed: true }, 0],
+] as const) {
+  test(`不提供：${reason}，不是因為已提供過`, async ($, on) => {
+    const w = world(on, 100_000, 1_000_000, { [KEY]: progress })
+    await w.clock.advance(age)
+    expect(await blockOf($)).toBeUndefined()
+    expect(w.get(KEY)).toEqual(progress)
+  })
+}
 
 test('設定 resume_hint 關閉：不提供，也不記成已提供', async ($, on) => {
   const w = world(on, 100_000, 1_000_000, { [KEY]: OLD })

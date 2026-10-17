@@ -6,10 +6,15 @@ All notable changes to ctx-handoff. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+### Added
+
+- Session-only away pause and resume controls in the command and panel, concurrent background activity, and reported session token totals collected since this update. Unknown usage is marked, not estimated as zero or dollars.
+
 ### Fixed
 
 - Notes updates keep failed segments for retry, avoid duplicate rule and procedure counts after partial writes, and require new user quotes to restore deleted memories.
-- Undelivered handoffs can be recovered by source session in the same workspace after a restart. Late away summaries are not offered after the conversation moves on.
+- Undelivered handoffs can be recovered by source session in the same workspace after a restart. Late away summaries are not offered after the conversation moves on. Idle refresh stops when the current process has no request to fork, then resumes after the next main conversation response.
+- Late idle distill completions no longer change a newer idle timer or refresh allowance. Session usage records follow the existing 30-day session cleanup; workspace totals and unfinished retry checkpoints are retained.
 
 ## [0.7.0] - 2026-10-15
 

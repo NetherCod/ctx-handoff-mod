@@ -103,6 +103,7 @@ ctx-handoff 的完整說明：每個功能怎麼運作、所有設定與指令�
 | `/handoff distill` | 立刻整理專案筆記 |
 | `/handoff resume`／`continue` | 離開回來後：用摘要開新對話，或留在原對話 |
 | `/handoff resend [source-session-id]` | 重送未送達摘要；重啟後在同工作區指定來源 session |
+| `/handoff away pause\|resume` | 暫停本對話離席工作或從現在重排閒置計時；筆記整理照常 |
 | `/handoff refresh on\|off`、`distill on\|off` | 開關保持快取或專案筆記 |
 | `/handoff guard` | 列出守門；`suggest` 草擬新的，`on\|off\|drop N` 核准、停用或刪除，`mode N deny\|remind` 切換擋下或提醒 |
 

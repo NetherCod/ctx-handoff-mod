@@ -11,6 +11,7 @@ export type { PanelTab } from '../types'
 export type PanelView = PanelData & PanelUi & { columns: number }
 
 export type PanelActions = {
+  away: (paused: boolean) => void
   tab: (tab: PanelTab) => void
   guard: (id: number, action: 'on' | 'off' | 'drop') => void
   suggest: () => void
@@ -280,6 +281,10 @@ export function panelTree(ui: Elements, v: PanelView, act: PanelActions) {
         </Box>
         <Button key="close" label={m.close} role="dismiss" dimColor onPress={act.close} />
       </Box>
+      {v.background ? <Box flexDirection="column" marginBottom={1}>
+        <Button key="away-toggle" label={v.background.paused ? t().background.resume : t().background.pause} onPress={() => act.away(!v.background?.paused)} />
+        {v.background.lines.map((line, i) => <Text key={`background:${i}`} dimColor>{fit(line, inner)}</Text>)}
+      </Box> : null}
       <Box marginBottom={1}>
         {tabs.map((t, i) => (
           <Button

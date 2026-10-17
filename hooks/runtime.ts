@@ -7,6 +7,8 @@ import { freshReply } from './lang'
 import type { ReplyLang, ReplyState } from './lang'
 
 export const rt = {
+  distillTask: undefined as { sid: string; why: string; at: number } | undefined,
+  handoffTask: undefined as { sid: string; phase: 'refresh' | 'generating' | 'submitting'; at: number } | undefined,
   idle: undefined as Timer | undefined,
   refreshes: 0,
   // 互斥：同一時間只處理一個 handoff（不攔訊息）
@@ -54,6 +56,8 @@ export const rt = {
 
 // 重設程序內狀態（模組重新載入或測試重跑時）；distilling、distillFailed、presentStartedAt 沿用原本不重設的行為
 export function resetRuntime() {
+  rt.distillTask = undefined
+  rt.handoffTask = undefined
   rt.idle?.cancel()
   rt.idle = undefined
   rt.refreshes = 0

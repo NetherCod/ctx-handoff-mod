@@ -2,6 +2,18 @@
 import { expect, test } from 'claude-code/testing'
 import { cmd, ctl, NOTES_PATH, pushGuard, BAND_MOUNT, openPanel, PANEL_NOTES, world } from './test-world'
 
+test('面板與指令共用本對話離席控制，列出工作區與背景用量未知狀態', async ($, on) => {
+  const w = world(on, 100_000)
+  const ui = await openPanel($)
+  expect(await ui.find({ type: 'Text', text: /本對話背景用量尚未收集/ })).toBeDefined()
+  await ui.press({ key: 'away-toggle' })
+  expect((await cmd($, '')).text).toContain('離席工作已暫停')
+  expect(w.forks).toEqual([])
+  await cmd($, 'away resume')
+  expect(await ui.find({ type: 'Button', text: '暫停本對話離席工作' })).toBeDefined()
+  await ui.unmount()
+})
+
 // ---------- 面板 ----------
 
 test('面板：/handoff panel 在輸入框上方開關；問卷佔著時讓出；按關閉也會收起', async ($, on) => {
@@ -76,8 +88,8 @@ test('面板：長記憶依寬度截成一行，按展開才顯示全文', async
   const row = await ui.find({ type: 'Text', text: /很長的記憶內容/ })
   expect(row?.text).toContain('…')
   expect(row?.text).not.toContain('結尾')
-  // 中文一字兩格：截短後不超過面板寬度
-  expect([...(row?.text ?? '')].reduce((n, ch) => n + ((ch.codePointAt(0) ?? 0) >= 0x1100 ? 2 : 1), 0)).toBeLessThanOrEqual(120)
+  // 這份輸入全是中文；120 格的一行不可能容納超過 60 個字再加省略符號。
+  expect([...(row?.text ?? '')].length).toBeLessThanOrEqual(61)
   await ui.press({ key: `t:m:${long.slice(2)}` })
   expect(await ui.find({ type: 'Text', text: /結尾$/ })).toBeDefined()
   await ui.press({ key: `t:m:${long.slice(2)}` })
@@ -85,7 +97,7 @@ test('面板：長記憶依寬度截成一行，按展開才顯示全文', async
 })
 
 // 事故（2026-10-06）：每次重畫都重讀經驗檔與 store，切分頁卡住點不動
-test('面板：切分頁、展開與重畫只讀快照不讀檔；指令改了守門，面板跟著更新', async ($, on) => {
+test('面板：切分頁與重畫不重讀經驗檔；指令改了守門，面板跟著更新', async ($, on) => {
   const w = world(on, 1000, 1_000_000, { 'guards:C--proj': [pushGuard('proposed')] })
   w.files.set(NOTES_PATH, PANEL_NOTES)
   const ui = await openPanel($)

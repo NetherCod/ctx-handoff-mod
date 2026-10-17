@@ -67,6 +67,8 @@ Off by default, so Claude Code's own compact takes over. Turn on `auto_handoff` 
 
 ### Keeps the cache warm while you're away
 
+Use `/handoff away pause` to pause away work for this session, or `resume` to start the idle timer again now. Notes updates keep running. Requests already sent cannot be cancelled and may still cost tokens. The panel has the same control and shows background activity and reported session token usage collected since this update, not a bill.
+
 <img src="docs/assets/cache.svg" width="900" alt="Animation: after you leave, the cache is refreshed at 55, 110 and 165 minutes; after that a summary is saved, and when you return you choose to resume or continue">
 
 ### Learns your project, then hands it to your repo

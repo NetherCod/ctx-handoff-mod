@@ -444,6 +444,24 @@ test('新增規則與流程部分寫入後改輸出confirm，不把同一事件�
   expect(w.get('distill:S1')).toMatchObject({ turn: 5 })
 })
 
+for (const errno of ['ENOENT', 'EACCES', 'ENOTDIR']) {
+  test(`真實fs.read錯誤形狀只將缺檔視為空筆記：${errno}`, async ($, on) => {
+    const w = world(on, 100_000, 1_000_000, {}, [], 5)
+    if (errno !== 'ENOENT') w.files.set(NOTES, EXISTING)
+    ctl.failRead = { path: NOTES, reason: `ctx-handoff: $.fs.read(C:\\notes(with parentheses)\\ctx-handoff.md) failed: ${errno}` }
+    const result = await distillNow($)
+    if (errno === 'ENOENT') {
+      expect(result.text).toContain('整理完成')
+      expect(w.get('distill:S1')).toMatchObject({ turn: 5 })
+    } else {
+      expect(result.text).toContain('指令失敗')
+      expect(w.files.get(NOTES)).toBe(EXISTING)
+      expect(w.writes).not.toContain(NOTES)
+      expect(w.get('distill:S1')).toBeUndefined()
+    }
+  })
+}
+
 // 事故（2026-10-14，issue #3）：使用者手動整理掉的記憶，整理不知道刪過，同一段對話還在談那些主題就會加回來
 test('墓碑：直接改檔刪掉的記憶，整理加不回來；使用者又提起（附原話）才加回', async ($, on) => {
   let n = 5

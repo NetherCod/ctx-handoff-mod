@@ -68,7 +68,7 @@ export const ctl = fresh()
 // 引擎底下的世界：用量、fork、/clear、送出、檔案，全部記下來
 export const world = (on: On, tokens: number, window = 1_000_000, store: Record<string, unknown> = {}, agents: { id: string; status: string }[] = [], turns: number | (() => number) = 0,
   // 介面語言由 Claude Code 的 language 設定決定；測試預設釘在繁體中文，不看執行測試那台機器的系統語系
-  language: unknown = '繁體中文') => {
+  language: unknown = '繁體中文', injectAutoHandoffOverride = true) => {
   const turnsOf = typeof turns === 'function' ? turns : () => turns
   const forks: string[] = []
   const completes: { model: string; effort?: string; system?: string; prompt: string; timeoutMs?: number }[] = []
@@ -106,7 +106,7 @@ export const world = (on: On, tokens: number, window = 1_000_000, store: Record<
   const get = (key: string) => kv.get(key)
   const put = (key: string, value: unknown) => { kv.set(key, value) }
   on('env.get', (_$, e: { name: string }) => ({ value: ctl.envVars[e.name] }))
-  on('settings.read', () => ({ value: { language, pluginConfigs: { 'ctx-handoff@ctx-handoff-mod': { options: { auto_handoff: true, ...ctl.pluginOptions } } } } }) as never)
+  on('settings.read', () => ({ value: { language, pluginConfigs: { 'ctx-handoff@ctx-handoff-mod': { options: { ...(injectAutoHandoffOverride ? { auto_handoff: true } : {}), ...ctl.pluginOptions } } } } }) as never)
   on('config.set', (_$, e: { key: string; value: unknown }) => ({ value: e.value }) as never)
   on('session.id', () => ({ value: ctl.curSid }))
   on('session.turns', () => ({ value: turnsOf() }))
