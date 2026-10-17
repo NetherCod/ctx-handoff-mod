@@ -5,16 +5,18 @@ import { panelTree, showSetting } from './panel'
 import type { PanelActions } from './panel'
 import { getLang, pickLang, setLang, t } from './i18n'
 import type { Lang } from './i18n'
-import { addRejected, applyActions, distillPrompt, guardAnswers, guardPromotions, isQuoted, latestProgress, looksSecret, parseActions, squash } from './distill'
+import { addRejected, applyActions, distillPrompt, guardAnswers, guardPromotions, isQuoted, latestProgress, looksSecret, parseActions } from './distill'
 import type { Action, Rejected } from './distill'
 import { progressForPrompt, progressKey, progressOffer, withOffered } from './progress'
 import type { Progress, ProgressFields } from './progress'
 import { GUARD_ASK_ITEMS, GUARD_MIN_COUNT, applyGuardChange, guardAskText, guardCandidatesOf, guardChangeOf, guardHitKey, guardHits, guardListText, guardPrompt, guardSummaryText, inputText, parseGuards, withHits, withProposals } from './guards'
 import type { Guard, GuardMode } from './guards'
-import { NOTE_TAG, PROJECT_DECLINED, PROJECT_IN, contextText, localStamp, memHead, noteBlock, parseNotes, projectOf, renderNotes, tag } from './notes'
+import { PROJECT_DECLINED, PROJECT_IN, contextText, localStamp, memHead, noteBlock, parseNotes, projectOf, renderNotes, tag } from './notes'
 import type { Notes, Rule } from './notes'
 import { encodeProject, isAbs, resolveDots, slash } from './paths'
-import { anchorOf, transcriptOf } from './transcript'
+import { anchorOf } from './transcript'
+import { hasNewDistillTurns, selectDistillBatch } from './distill-batch'
+import type { DistillSnapshot as DistillSnap, DistillCheckpoint, DistillEndpoint } from './distill-batch'
 import type { Row } from './transcript'
 import { DISTILL_EFFORT, DISTILL_MAX_TOKENS, DISTILL_TIMEOUT_MS, GUARD_MAX_TOKENS, HANDOFF_TIMEOUT_MS, KEEP, DEFER_CAP_EXTRA, DEFER_CAP_RATIO, RELOAD_GRACE_MS, RETRY_MS, RETRY_TURNS, STOPPED, cfg, optionsOf, resetConfig, resolveConfig, settingSource, settingValue, specOf, stepSetting, thresholdOf } from './config'
 import { resetRuntime, rt } from './runtime'
@@ -284,8 +286,6 @@ async function isDistillOn($: EngineInterface) {
 }
 
 // 整理要用的這段對話：交接時在 /clear 之前讀好，之後才整理也不受影響（/clear 後 session id 與訊息都換了）
-type DistillSnap = { sid: string; turns: number; anchor: string | undefined; rows: readonly Row[] }
-type DistillEndpoint = { fromTurn: number; turn: number; anchor?: string; rowCount: number; last?: Pick<Row, 'role' | 'text'> }
 async function distillSnap($: EngineInterface): Promise<DistillSnap> {
   const sid = await $.session.id()
   return {
@@ -307,7 +307,7 @@ async function distill($: EngineInterface, why: string, queue = true, snap?: Dis
   }
   const sid = snap?.sid ?? await $.session.id()
   const key = `distill:${sid}`
-  const prev = (await $.store.get(key)) as { turn: number; anchor?: string; rowCount?: number; last?: Pick<Row, 'role' | 'text'> } | undefined
+  const prev = (await $.store.get(key)) as DistillCheckpoint | undefined
   const retryKey = `distill:retry:${sid}`
   let retry = (await $.store.get(retryKey)) as DistillEndpoint | undefined
   if (retry && (prev?.turn ?? 0) >= retry.turn) {
@@ -315,7 +315,7 @@ async function distill($: EngineInterface, why: string, queue = true, snap?: Dis
     retry = undefined
   }
   const turns = retry?.turn ?? snap?.turns ?? await $.session.turns()
-  if (turns <= (prev?.turn ?? 0)) return undefined
+  if (!hasNewDistillTurns(turns, prev)) return undefined
   // 讀 store 的空檔可能有別的整理先開始
   if (rt.distilling) return undefined
   rt.distilling = true
@@ -332,24 +332,13 @@ async function distill($: EngineInterface, why: string, queue = true, snap?: Dis
   try {
     // 這次整理到使用者最後一則訊息為止；下次從它之後開始
     const anchor = retry ? retry.anchor : snap ? snap.anchor : (await $.store.get(`last:${sid}`)) as string | undefined
-    let rows = snap?.rows ?? (await $.session.messages()) as readonly Row[]
-    if (retry) {
-      const last = rows[retry.rowCount - 1]
-      if (rows.length < retry.rowCount || (retry.last && (last?.role !== retry.last.role || last.text !== retry.last.text))) {
-        await fail(t().distill.retryLost)
-        return undefined
-      }
-      rows = rows.slice(0, retry.rowCount)
+    const batch = selectDistillBatch({ sid, turns, anchor, rows: snap?.rows ?? (await $.session.messages()) as readonly Row[], previous: prev, retry })
+    if (batch.kind === 'blocked') {
+      await fail(t().distill.retryLost)
+      return undefined
     }
-    const previousLast = prev?.rowCount === undefined ? undefined : rows[prev.rowCount - 1]
-    const located = prev?.rowCount !== undefined && rows.length >= prev.rowCount && (!prev.last || (previousLast?.role === prev.last.role && previousLast.text === prev.last.text))
-    const transcript = located
-      ? { ...transcriptOf(rows.slice(prev.rowCount), undefined), found: true }
-      : transcriptOf(rows, prev?.anchor)
-    // quote 的比對對象：使用者自己送出的訊息（本程式注入的經驗與 handoff 不算）
-    const userText = squash(rows.filter(r => r.role === 'user' && !r.text.startsWith(NOTE_TAG) && !r.text.startsWith(tag)).map(r => r.text).join('\n'))
-    const currentUserText = prev?.anchor && !transcript.found ? ''
-      : squash(transcript.rows.filter(r => r.role === 'user' && !r.text.startsWith(NOTE_TAG) && !r.text.startsWith(tag)).map(r => r.text).join('\n'))
+    if (batch.kind === 'nothing-new') return undefined
+    const { rows, transcript, userText, currentUserText, source } = batch
     const file = await notesFile($)
     const original = await readNotes($, file)
     const notes = parseNotes(original)
@@ -427,11 +416,9 @@ async function distill($: EngineInterface, why: string, queue = true, snap?: Dis
       rt.distillFailed = true
       return r
     }
-    const source = `${sid}:${retry?.fromTurn ?? prev?.turn ?? 0}:${turns}`
     const { notes: updated, changes: noteChanges } = applyActions(actions, notes, stamp.slice(0, 10), sid, source)
     if (!retry && (noteChanges.length > 0 || guardPromotions(actions).length > 0 || guardAnswers(actions).length > 0 || latestProgress(actions))) {
-      const last = rows.at(-1)
-      await $.store.set(retryKey, { fromTurn: prev?.turn ?? 0, turn: turns, anchor, rowCount: rows.length, ...(last ? { last: { role: last.role, text: last.text } } : {}) } satisfies DistillEndpoint)
+      await $.store.set(retryKey, batch.endpoint)
     }
     if (noteChanges.length > 0) {
       await $.fs.write(file, renderNotes(updated, stamp))
@@ -444,8 +431,8 @@ async function distill($: EngineInterface, why: string, queue = true, snap?: Dis
     await touchSeen($, key)
     const usage = describeUsage({ input: r.usage.input_tokens, cacheRead: r.usage.cache_read_input_tokens, cacheCreation: r.usage.cache_creation_input_tokens, output: r.usage.output_tokens, ms: now - started })
     await $.store.set(`distill:last:${await projectKey($)}`, { at: now, why, changes, file, usage, rejected } satisfies DistillLast)
-    const last = rows.at(-1)
-    await $.store.set(key, { turn: turns, at: now, anchor, rowCount: rows.length, ...(last ? { last: { role: last.role, text: last.text } } : {}) })
+    const { fromTurn: _fromTurn, ...checkpoint } = batch.endpoint
+    await $.store.set(key, { ...checkpoint, at: now })
     await $.store.delete(retryKey).catch(err => $.ui.log(t().distill.retryCleanup(String(err))))
     await stat($, 'distill.ok')
     // 寫成文字還擋不住的規則：背景起草守門，下一段新對話請 AI 問使用者（失敗不影響整理）
