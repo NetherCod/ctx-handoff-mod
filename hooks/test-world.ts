@@ -33,6 +33,7 @@ const fresh = () => ({
   // 寫入這個路徑時失敗（模擬磁碟錯誤）
   failWrite: undefined as string | undefined,
   failRead: undefined as { path: string; reason: string } | undefined,
+  failStore: undefined as { key: string; remaining: number } | undefined,
   // $.session.repo()：依目前工作目錄回答（會跟著 cd 變）
   curRepo: null as { root: string; remote: string | null; internal: boolean; name: string } | null,
   // 交接 fork（不是整理）回傳失敗
@@ -87,7 +88,11 @@ export const world = (on: On, tokens: number, window = 1_000_000, store: Record<
   on('store.get', (_$, e: { key: string }) => ({
     value: kv.has(e.key) ? JSON.parse(JSON.stringify(kv.get(e.key))) : e.key === 'settings' ? { ...ctl.panelSettings } : undefined,
   }))
-  on('store.set', (_$, e: { key: string; value: unknown }) => { kv.set(e.key, JSON.parse(JSON.stringify(e.value))); return { value: undefined } })
+  on('store.set', (_$, e: { key: string; value: unknown }) => {
+    if (ctl.failStore?.key === e.key && ctl.failStore.remaining > 0) { ctl.failStore.remaining -= 1; return { deny: 'store write failed' } }
+    kv.set(e.key, JSON.parse(JSON.stringify(e.value)))
+    return { value: undefined }
+  })
   on('store.delete', (_$, e: { key: string }) => { kv.delete(e.key); return { value: undefined } })
   on('store.keys', () => ({ value: [...kv.keys()] }))
   const get = (key: string) => kv.get(key)

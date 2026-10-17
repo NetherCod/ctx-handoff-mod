@@ -10,6 +10,7 @@ test('狀態列顯示整理進度：平常是再幾則整理，整理時顯示�
   expect((await cmd($, '')).text).toContain('下次：再 25 則')
   await distillNow($)
   expect(w.statuses).toContain('正在整理筆記…')
+  expect(w.get('distill:error:C--proj')).toBeUndefined()
   expect(w.statuses.at(-1)).toBe('再 30 則整理筆記')
   await cmd($, 'distill off')
   expect(w.statuses.at(-1)).toBeUndefined()
@@ -338,6 +339,23 @@ for (const when of ['before', 'after']) {
     expect(w.completes.length).toBe(when === 'before' ? 0 : 1)
   })
 }
+
+test('經驗檔寫成後 store 失敗，同一片段重試不重複增加規則與流程次數', async ($, on) => {
+  const w = world(on, 100_000, 1_000_000, {}, [], 5)
+  w.files.set(NOTES, `${EXISTING}\n## 流程\n\n### 發版（1 次）\n- 時機：發版\n- 步驟：\n  1. 測試\n  2. 發布\n`)
+  ctl.onFork = () => { ctl.failStore = { key: 'tombstones:C--proj', remaining: 1 } }
+  ctl.distillReply = actionsReply({ op: 'confirm_rule', id: 'R1', evidence: '使用者又要求一次' }, { op: 'confirm_procedure', id: 'P1', evidence: '再次發版' })
+  await distillNow($)
+  expect(w.files.get(NOTES)).toContain('### 規則一（2 次）')
+  expect(w.files.get(NOTES)).toContain('### 發版（2 次）')
+  expect(w.get('distill:S1')).toBeUndefined()
+  ctl.onFork = undefined
+  ctl.distillReply = actionsReply({ op: 'confirm_rule', id: 'R1', evidence: '同一段使用者重申' }, { op: 'confirm_procedure', id: 'P1', evidence: '同一次再次執行發版' })
+  await distillNow($)
+  expect(w.files.get(NOTES)).toContain('### 規則一（2 次）')
+  expect(w.files.get(NOTES)).toContain('### 發版（2 次）')
+  expect(w.get('distill:S1')).toMatchObject({ turn: 5 })
+})
 
 // 事故（2026-10-14，issue #3）：使用者手動整理掉的記憶，整理不知道刪過，同一段對話還在談那些主題就會加回來
 test('墓碑：直接改檔刪掉的記憶，整理加不回來；使用者又提起（附原話）才加回', async ($, on) => {
