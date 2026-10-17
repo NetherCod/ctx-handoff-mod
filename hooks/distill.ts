@@ -2,8 +2,11 @@
 import { t } from './i18n'
 import { PROGRESS_TOTAL_MAX, isProgressState, progressSize } from './progress'
 import type { ProgressFields } from './progress'
-import { EVIDENCE_KEEP, NOTE_TAG, PROJECT_DECLINED, STALE_DAYS, inProject, inProjectText, isArchived, memHead, memOneLine, procBody, procOneLine, procRest, procSteps, procWhen, projectOf, ruleText, setProject, tag } from './notes'
+import { EVIDENCE_KEEP, NOTE_TAG, PROJECT_DECLINED, PROJECT_IN, STALE_DAYS, inProject, inProjectText, isArchived, memHead, memOneLine, procBody, procOneLine, procRest, procSteps, procWhen, projectOf, ruleText, setProject, tag } from './notes'
 import type { Change, Memory, Notes, Procedure, Rule } from './notes'
+import type { Guard } from './guards'
+import { isBuried } from './tombstones'
+import type { Tombstones } from './tombstones'
 
 // 記憶給人看：標題是一句結論，做法／理由各一句；根據給整理模型判斷用，不帶入新對話
 const TITLE_MAX = 60
@@ -390,6 +393,66 @@ export const guardAnswers = (actions: Action[]) => actions.flatMap(a =>
 export function latestProgress(actions: Action[]): ProgressFields | undefined {
   const a = actions.findLast((x): x is Extract<Action, { op: 'set_progress' }> => x.op === 'set_progress')
   return a && { task: a.task, state: a.state, ...(a.verified ? { verified: a.verified } : {}), ...(a.next ? { next: a.next } : {}), ...(a.decisions?.length ? { decisions: a.decisions } : {}), files: a.files }
+}
+
+export function prepareDistillActions(input: {
+  text: string
+  notes: Notes
+  userText: string
+  candidates: string[]
+  drafts: string[]
+  retry: boolean
+  guards: readonly Pick<Guard, 'id' | 'state' | 'project'>[]
+}) {
+  const completed = new Map<string, string>()
+  const answered = new Map<string, string>()
+  if (input.retry) {
+    for (const [prefix, items] of [['R', input.notes.rules], ['P', input.notes.procedures]] as const) {
+      items.forEach((item, i) => {
+        const state = projectOf(item)?.replace(/（第 \d+ 次時）$/, '')
+        if (state) completed.set(`${prefix}${i + 1}`, state)
+      })
+    }
+    for (const g of input.guards) {
+      if (g.project) completed.set(`G${g.id}`, g.project)
+      if (g.state === 'on' || g.state === 'off') answered.set(`G${g.id}`, g.state)
+    }
+  }
+  const parsed = parseActions(input.text, input.notes, input.userText, [...input.candidates, ...completed.keys()], [...input.drafts, ...answered.keys()])
+  return { ...parsed, completed, answered }
+}
+
+export function reconcileDistillActions(input: {
+  prepared: ReturnType<typeof prepareDistillActions>
+  actions: Action[]
+  tombstones: Tombstones
+  currentUserText: string
+  notes: Notes
+  day: string
+  sid: string
+  source: string
+}) {
+  const { completed, answered, rejected } = input.prepared
+  let noops = 0
+  const actions = input.actions.filter(a => {
+    if ((a.op === 'approve_guard' || a.op === 'decline_guard') && answered.has(a.id)) {
+      if (answered.get(a.id) === (a.op === 'approve_guard' ? 'on' : 'off')) noops += 1
+      else addRejected(rejected, t().reject.noId(a.id), JSON.stringify(a))
+      return false
+    }
+    if ((a.op === 'in_project' || a.op === 'not_in_project') && completed.has(a.id)) {
+      if (completed.get(a.id) === (a.op === 'in_project' ? `${PROJECT_IN}${a.where}` : PROJECT_DECLINED)) noops += 1
+      else addRejected(rejected, t().reject.noId(a.id), JSON.stringify(a))
+      return false
+    }
+    if (a.op !== 'add_memory' || !isBuried(input.tombstones, a.title, a.quote !== undefined && isQuoted(a.quote, input.currentUserText))) return true
+    addRejected(rejected, t().reject.buried(a.title), JSON.stringify(a))
+    return false
+  })
+  if (actions.length === 0 && noops === 0 && rejected.count > 0) return { kind: 'unusable', rejected } as const
+  const { notes, changes } = applyActions(actions, input.notes, input.day, input.sid, input.source)
+  const hasEffects = changes.length > 0 || guardPromotions(actions).length > 0 || guardAnswers(actions).length > 0 || latestProgress(actions) !== undefined
+  return { kind: 'usable', actions, rejected, notes, changes, hasEffects } as const
 }
 
 // 依序套用已驗證的動作；刪除先標記成 undefined，編號不會因此位移

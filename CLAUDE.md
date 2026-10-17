@@ -79,6 +79,8 @@ node tools/status.mjs             # 確認各 session 已熱重載、看整理�
 | 保持快取 | 實機紀錄：第 2、3 次刷新（閒置 110、165 分鐘）`cache_creation=0`，整段從快取讀，刷新確實延長了快取 |
 | 跨檔案傳 `$` | `$` 只能在同一檔案裡往下傳（plugin 載入時的靜態檢查，tsc 看不出來）：把 `$` 傳給從別的檔案 import 的函式，plugin 會載入失敗（`$ is followed only into a function declared in this same file`）。碰 `$` 的流程都留在 `register.ts`，拆檔只搬純函式（資料進、資料出；`rt` 狀態、`cfg` 設定與 `t()` 這類不碰 `$` 的可以跨檔案） |
 
+整理批次與固定重試端點、完整及本批原話範圍由 `hooks/distill-batch.ts` 決定；`hooks/distill.ts` 裁決動作、已完成重試、墓碑與筆記變化。`register.ts` 保留模型、檔案及 store 的 I/O 時序，並在採用交接／刷新結果前重新觀察來源，交給 `hooks/handoff.ts` 的 `sourceFreshness` 判斷。
+
 ## 測試引擎的限制
 
 - 同一個 hook 在一個測試裡只能註冊一次（`registered twice`），第一次呼叫 `$` 之後不能再 `on()`；要測多種情況就在頂層用 `for (…) test(…)` 展開。

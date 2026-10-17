@@ -5,13 +5,13 @@ import { panelTree, showSetting } from './panel'
 import type { PanelActions } from './panel'
 import { getLang, pickLang, setLang, t } from './i18n'
 import type { Lang } from './i18n'
-import { addRejected, applyActions, distillPrompt, guardAnswers, guardPromotions, isQuoted, latestProgress, looksSecret, parseActions } from './distill'
+import { addRejected, distillPrompt, guardAnswers, guardPromotions, latestProgress, looksSecret, prepareDistillActions, reconcileDistillActions } from './distill'
 import type { Action, Rejected } from './distill'
 import { progressForPrompt, progressKey, progressOffer, withOffered } from './progress'
 import type { Progress, ProgressFields } from './progress'
 import { GUARD_ASK_ITEMS, GUARD_MIN_COUNT, applyGuardChange, guardAskText, guardCandidatesOf, guardChangeOf, guardHitKey, guardHits, guardListText, guardPrompt, guardSummaryText, inputText, parseGuards, withHits, withProposals } from './guards'
 import type { Guard, GuardMode } from './guards'
-import { PROJECT_DECLINED, PROJECT_IN, contextText, localStamp, memHead, noteBlock, parseNotes, projectOf, renderNotes, tag } from './notes'
+import { PROJECT_DECLINED, PROJECT_IN, contextText, localStamp, memHead, noteBlock, parseNotes, renderNotes, tag } from './notes'
 import type { Notes, Rule } from './notes'
 import { encodeProject, isAbs, resolveDots, slash } from './paths'
 import { anchorOf } from './transcript'
@@ -24,8 +24,9 @@ import { doneCheck, freshWork, noteCall, trackFailure } from './loops'
 import { clearNext, noteStep, peekNext, resolveReplyLang, takePending } from './lang'
 import { addBackgroundUsage, addStat, awayKey, describeUsage, pendingKey, pruneSeen, statsKey } from './records'
 import type { Away, DistillError, DistillLast, HandoffError, Kind, PendingSubmit, Saved, Stats, Usage } from './records'
-import { HANDOFF_PROMPT, forkFailure, heldBlock } from './handoff'
-import { buryMissing, isBuried, memTitles, tombKey } from './tombstones'
+import { HANDOFF_PROMPT, forkFailure, heldBlock, sourceFreshness } from './handoff'
+import type { HandoffSource } from './handoff'
+import { buryMissing, memTitles, tombKey } from './tombstones'
 import type { Tombstones } from './tombstones'
 import { guardsFoundInRepo, markAsked, promoteCandidates, promoteItems, promoteText, releaseAsked } from './promote'
 import type { PromoteAsk } from './promote'
@@ -154,7 +155,7 @@ async function recordFailure($: EngineInterface, kind: Kind, tokens: number | nu
   if (kind === 'present' || kind === 'manual') rt.retryAfter = { turns, at }
 }
 
-async function makeHandoff($: EngineInterface, kind: Kind, tokens: number | null, source?: { sid: string; activity: number }) {
+async function makeHandoff($: EngineInterface, kind: Kind, tokens: number | null, source?: HandoffSource) {
   const sid = source?.sid ?? await $.session.id()
   const started = await $.clock.now()
   const task = { sid, phase: 'generating', at: started } satisfies NonNullable<typeof rt.handoffTask>
@@ -162,7 +163,7 @@ async function makeHandoff($: EngineInterface, kind: Kind, tokens: number | null
   await refreshPanel($)
   try {
   const r = await forkWithin($, HANDOFF_PROMPT, HANDOFF_TIMEOUT_MS, sid)
-  if (source && (rt.activity !== source.activity || await $.session.id() !== sid)) {
+  if (source && !(await sourceIsFresh($, source))) {
     $.ui.log(t().idle.outdated)
     await stat($, 'away.stale')
     return undefined
@@ -184,9 +185,9 @@ async function makeHandoff($: EngineInterface, kind: Kind, tokens: number | null
   const saved: Saved = { at, sessionId: sid, kind, tokens, text: r.text, usage }
   const handoffsKey = `handoffs:${await projectKey($)}`
   const list = ((await $.store.get(handoffsKey)) as Saved[] | undefined) ?? []
-  if (source && (rt.activity !== source.activity || await $.session.id() !== sid)) return undefined
+  if (source && !(await sourceIsFresh($, source))) return undefined
   await $.store.set(handoffsKey, [...list, saved].slice(-KEEP))
-  if (source && (rt.activity !== source.activity || await $.session.id() !== sid)) return undefined
+  if (source && !(await sourceIsFresh($, source))) return undefined
   rt.lastHandoff = { text: r.text }
   $.ui.log(t().handoff.savedLog(kind, describeUsage(usage)))
   return r.text
@@ -369,39 +370,14 @@ async function distill($: EngineInterface, why: string, queue = true, snap?: Dis
     }
     const now = await $.clock.now()
     const stamp = localStamp(now)
-    const completed = new Map<string, string>()
-    const answered = new Map<string, string>()
-    if (retry) {
-      for (const [prefix, items] of [['R', notes.rules], ['P', notes.procedures]] as const) {
-        items.forEach((item, i) => {
-          const state = projectOf(item)?.replace(/（第 \d+ 次時）$/, '')
-          if (state) completed.set(`${prefix}${i + 1}`, state)
-        })
-      }
-      for (const g of await loadGuards($)) {
-        if (g.project) completed.set(`G${g.id}`, g.project)
-        if (g.state === 'on' || g.state === 'off') answered.set(`G${g.id}`, g.state)
-      }
-    }
-    const parsed = parseActions(r.text, notes, userText, [...candidates.map(c => c.id), ...completed.keys()], [...drafts.map(d => d.id), ...answered.keys()])
-    const rejected = parsed.rejected
-    let noops = 0
-    const actions = (await checkPromotions($, parsed.actions, rejected)).filter(a => {
-      if ((a.op === 'approve_guard' || a.op === 'decline_guard') && answered.has(a.id)) {
-        if (answered.get(a.id) === (a.op === 'approve_guard' ? 'on' : 'off')) noops += 1
-        else addRejected(rejected, t().reject.noId(a.id), JSON.stringify(a))
-        return false
-      }
-      if ((a.op === 'in_project' || a.op === 'not_in_project') && completed.has(a.id)) {
-        if (completed.get(a.id) === (a.op === 'in_project' ? `${PROJECT_IN}${a.where}` : PROJECT_DECLINED)) noops += 1
-        else addRejected(rejected, t().reject.noId(a.id), JSON.stringify(a))
-        return false
-      }
-      if (a.op !== 'add_memory' || !isBuried(tombs, a.title, a.quote !== undefined && isQuoted(a.quote, currentUserText))) return true
-      addRejected(rejected, t().reject.buried(a.title), JSON.stringify(a))
-      return false
+    const prepared = prepareDistillActions({
+      text: r.text, notes, userText, candidates: candidates.map(c => c.id), drafts: drafts.map(d => d.id),
+      retry: retry !== undefined, guards: retry ? await loadGuards($) : [],
     })
-    if (actions.length === 0 && noops === 0 && rejected.count > 0) {
+    const checked = await checkPromotions($, prepared.actions, prepared.rejected)
+    const result = reconcileDistillActions({ prepared, actions: checked, tombstones: tombs, currentUserText, notes, day: stamp.slice(0, 10), sid, source })
+    const { rejected } = result
+    if (result.kind === 'unusable') {
       const usage = describeUsage({ input: r.usage.input_tokens, cacheRead: r.usage.cache_read_input_tokens, cacheCreation: r.usage.cache_creation_input_tokens, output: r.usage.output_tokens, ms: now - started })
       await $.store.set(`distill:last:${await projectKey($)}`, { at: now, why, changes: [], file, usage, rejected } satisfies DistillLast)
       await fail(t().distill.noUsableActions)
@@ -416,8 +392,8 @@ async function distill($: EngineInterface, why: string, queue = true, snap?: Dis
       rt.distillFailed = true
       return r
     }
-    const { notes: updated, changes: noteChanges } = applyActions(actions, notes, stamp.slice(0, 10), sid, source)
-    if (!retry && (noteChanges.length > 0 || guardPromotions(actions).length > 0 || guardAnswers(actions).length > 0 || latestProgress(actions))) {
+    const { actions, notes: updated, changes: noteChanges } = result
+    if (!retry && result.hasEffects) {
       await $.store.set(retryKey, batch.endpoint)
     }
     if (noteChanges.length > 0) {
@@ -497,6 +473,16 @@ async function awayPaused($: EngineInterface) {
   return saved?.sid === await $.session.id() && saved.paused
 }
 
+async function sourceIsFresh($: EngineInterface, source: HandoffSource, withPaused = false) {
+  if (rt.activity !== source.activity) return false
+  const sid = await $.session.id()
+  if (!sourceFreshness(source, { sid, activity: rt.activity })) return false
+  if (!withPaused) return true
+  const saved = await read($, awayControl)
+  const currentSid = await $.session.id()
+  return sourceFreshness(source, { sid: currentSid, activity: rt.activity, paused: saved?.sid === currentSid && saved.paused })
+}
+
 async function changeAway($: EngineInterface, paused: boolean) {
   const sid = await $.session.id()
   await update($, awayControl, () => ({ sid, paused }))
@@ -545,13 +531,13 @@ async function onIdle($: EngineInterface) {
     try {
     // 刷新用最便宜的 fork（只回 OK）讀一次快取；整理是另一個不帶歷史的請求，有新對話才跑
     const r = await forkWithin($, '只回覆 OK', HANDOFF_TIMEOUT_MS, sid)
-    if (rt.activity !== activity || await $.session.id() !== sid || await awayPaused($)) return
+    if (!(await sourceIsFresh($, { sid, activity }, true))) return
     if (!r.isAnswered && r.reason === 'nothing-to-fork') {
       $.ui.log(t().idle.refreshSkipped)
       return
     }
     if (await isDistillOn($)) await distill($, t().distill.why.idle)
-    if (rt.activity !== activity || await $.session.id() !== sid || await awayPaused($)) return
+    if (!(await sourceIsFresh($, { sid, activity }, true))) return
     rt.refreshes += 1
     $.ui.log(r.isAnswered
       ? t().idle.refresh(rt.refreshes, cfg.maxRefresh, r.usage.cache_read_input_tokens, r.usage.cache_creation_input_tokens)
@@ -564,17 +550,17 @@ async function onIdle($: EngineInterface) {
   rt.busy = true
   try {
     if (await isDistillOn($)) await distill($, t().distill.why.away)
-    if (rt.activity !== activity || await $.session.id() !== sid) return
+    if (!(await sourceIsFresh($, { sid, activity }))) return
     const handoff = await makeHandoff($, 'away', tokens, { sid, activity })
     if (handoff === undefined) return
-    if (rt.activity !== activity || await $.session.id() !== sid) {
+    if (!(await sourceIsFresh($, { sid, activity }))) {
       $.ui.log(t().idle.outdated)
       await stat($, 'away.stale')
       return
     }
     const key = awayKey(sid)
     await $.store.set(key, { handoff } satisfies Away)
-    if (rt.activity !== activity || await $.session.id() !== sid) {
+    if (!(await sourceIsFresh($, { sid, activity }))) {
       await $.store.delete(key)
       return
     }

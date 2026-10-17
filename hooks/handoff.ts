@@ -31,3 +31,8 @@ export function forkFailure(reason: string) {
 }
 
 export const heldBlock = (items: string[]) => `${t().handoff.heldHead}\n${items.join('\n\n')}`
+
+export type HandoffSource = { sid: string; activity: number }
+
+export const sourceFreshness = (source: HandoffSource, observed: HandoffSource & { paused?: boolean }) =>
+  source.sid === observed.sid && source.activity === observed.activity && !observed.paused

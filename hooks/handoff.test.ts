@@ -264,6 +264,27 @@ test('S1 離席 handoff 產生中：不被 S1 攔下', async ($, on) => {
   expect(w.submits.at(-1)).toBe('不應被過時交接攔下')
 })
 
+test('刷新後讀取暫停狀態期間換 session，不採用舊來源或開始整理', async ($, on) => {
+  const w = world(on, 100_000, 1_000_000, {}, [], 5)
+  let armed = false
+  let switched = false
+  on('state.get', (_$, e, next) => {
+    if (armed && !switched && e.key === 'awayControl') {
+      switched = true
+      ctl.curSid = 'S2'
+    }
+    return next(e)
+  })
+  ctl.handoffGate = async () => { armed = true }
+  await endTurn($)
+  await w.clock.advance(55 * 60_000)
+  expect(switched).toBe(true)
+  expect(w.forks).toEqual(['只回覆 OK'])
+  expect(w.completes).toEqual([])
+  expect((await cmd($, '')).text).toContain('0/3')
+  expect(w.get('away:S1')).toBeUndefined()
+})
+
 for (const changed of ['complete', 'session', 'attachment']) {
   test(`離席生成後來源已前進，不採用晚到結果：${changed}`, async ($, on) => {
     const w = world(on, 100_000, 1_000_000, { refresh: false, distill: false })

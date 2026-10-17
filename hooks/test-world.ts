@@ -18,7 +18,6 @@ export const DISTILL_REPLY = actionsReply(
 
 // 會被測試改寫的世界狀態：ES module 的 let 匯出不能被匯入端重新指派，所以放進一個可變物件，每個 world() 開頭整個重設
 const fresh = () => ({
-  // 背景整理 fork 的回覆；個別測試可以換掉，onComplete 可以模擬 fork 期間發生的事
   distillReply: DISTILL_REPLY,
   onComplete: undefined as (() => void | Promise<void>) | undefined,
   // 整理請求回 aborted（引擎依 timeoutMs 放棄）
