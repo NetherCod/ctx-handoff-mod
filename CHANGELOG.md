@@ -6,16 +6,23 @@ All notable changes to ctx-handoff. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-17
+
+You can now pause away work for a single conversation without turning it off everywhere (while project notes keep updating), and see right in the panel how many background tokens this session has used. Under the hood, background notes and handoff recovery are much tougher: failed updates don't skip your conversation, retries never double-count rules, deleted memories can't be brought back by something you said earlier in the same long chat, and an undelivered handoff can be recovered even after restarting Claude Code.
+
 ### Added
 
-- Session-only away pause and resume controls in the command and panel, concurrent background activity, and reported session token totals collected since this update. Unknown usage is marked, not estimated as zero or dollars.
-- Deleting a guard in the panel now asks for confirmation, the Rules tab label includes procedure counts, and the panel header stays compact.
+- **Pause away work for just this session:** if you don't want the current conversation refreshing its cache or saving an away summary when idle, click the button at the top of the panel or run `/handoff away pause` (`/handoff away resume` restarts the timer). Project notes keep updating as usual, and other open or new conversations aren't affected.
+- **Live background status and session token usage:** `/handoff` and the panel now show notes updates and handoff/refresh work in separate slots so you can see what's running, along with the reported background tokens used by this session (requests that time out or return no usage are explicitly marked as unknown, never counted as zero or guessed in dollars).
+- **A tighter, safer panel:** the top bar puts the away status and pause button on one compact line and moves history details into the Last update tab; deleting a guard now takes two presses ("Confirm") just like memories and rules; and when a project has procedures, the Rules tab label shows both rule and procedure counts.
 
 ### Fixed
 
-- Notes updates keep failed segments for retry, avoid duplicate rule and procedure counts after partial writes, and require new user quotes to restore deleted memories.
-- Undelivered handoffs can be recovered by source session in the same workspace after a restart. Late away summaries are not offered after the conversation moves on. Idle refresh stops when the current process has no request to fork, then resumes after the next main conversation response.
-- Late idle distill completions no longer change a newer idle timer or refresh allowance. Session usage records follow the existing 30-day session cleanup; workspace totals and unfinished retry checkpoints are retained.
+- **Failed notes updates no longer skip your conversation:** if a notes update returns no usable actions or hits a file read error, the checkpoint stays put so the next run retries that slice of the conversation instead of dropping it.
+- **Retrying a partial write never double-counts rules or procedures:** if the notes file was written but saving the checkpoint failed, the next run retries the exact same slice of conversation and recognizes evidence and memories that already landed, so rule and procedure counts aren't incremented twice.
+- **Deleted memories aren't revived by older messages in the same chat:** quote matching for restoring a deleted memory now checks only the new messages since the last notes update, so something you said before deleting the memory won't bring it back on the next update.
+- **Recover undelivered handoffs after a restart:** if sending a handoff fails after `/clear` and you restart Claude Code, you can now run `/handoff resend <source-session-id>` in the same workspace to deliver it safely (the record is kept until delivery succeeds, and records from other workspaces are refused).
+- **Late away results don't overwrite fresh work, and fresh restarts don't spin on idle refresh:** if you come back and keep chatting (or pause away work) while an away summary or idle notes update is still running, the late result is discarded without touching your new idle timer or refresh count; and when a newly restarted or cleared session has nothing to fork yet, idle refresh stops until your next conversation turn ([#7](https://github.com/cablate/ctx-handoff-mod/issues/7)).
 
 ## [0.7.0] - 2026-10-15
 
@@ -151,7 +158,8 @@ Notes stay in the project you started in, and updating them costs far less.
 
 First release: automatic handoff at a context threshold, keeping the cache warm while you're away with a saved handoff after that, and project notes.
 
-[unreleased]: https://github.com/cablate/ctx-handoff-mod/compare/ctx-handoff--v0.7.0...HEAD
+[unreleased]: https://github.com/cablate/ctx-handoff-mod/compare/ctx-handoff--v0.8.0...HEAD
+[0.8.0]: https://github.com/cablate/ctx-handoff-mod/compare/ctx-handoff--v0.7.0...ctx-handoff--v0.8.0
 [0.7.0]: https://github.com/cablate/ctx-handoff-mod/compare/ctx-handoff--v0.6.0...ctx-handoff--v0.7.0
 [0.6.0]: https://github.com/cablate/ctx-handoff-mod/compare/ctx-handoff--v0.5.0...ctx-handoff--v0.6.0
 [0.5.0]: https://github.com/cablate/ctx-handoff-mod/compare/ctx-handoff--v0.4.0...ctx-handoff--v0.5.0

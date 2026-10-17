@@ -38,7 +38,7 @@ Long Claude Code sessions run into the same chores again and again. ctx-handoff 
 
 ## Install
 
-Requires Claude Code 2.1.287 or later. Tested up to 2.1.293.
+Requires Claude Code 2.1.287 or later. Tested up to 2.1.302.
 
 ```sh
 claude plugin marketplace add cablate/ctx-handoff-mod
@@ -67,7 +67,9 @@ Off by default, so Claude Code's own compact takes over. Turn on `auto_handoff` 
 
 ### Keeps the cache warm while you're away
 
-Use `/handoff away pause` to pause away work for this session, or `resume` to start the idle timer again now. Notes updates keep running. Requests already sent cannot be cancelled and may still cost tokens. The panel has the same control and shows background activity and reported session token usage collected since this update, not a bill.
+After about 55 idle minutes it sends a tiny request so the conversation cache doesn't expire, up to 3 times (about 4 hours); after that it saves a handoff summary without clearing, so when you return you choose to start fresh from it (`/handoff resume`) or stay where you were (`continue`).
+
+To pause away refreshes and away summaries for just this conversation, click the button at the top of the panel or run `/handoff away pause` (`resume` restarts the timer). Notes updates keep running, and other conversations aren't affected. The panel and `/handoff` also show live background activity and the session's reported background token usage since this update (not a bill; requests already sent cannot be cancelled).
 
 <img src="docs/assets/cache.svg" width="900" alt="Animation: after you leave, the cache is refreshed at 55, 110 and 165 minutes; after that a summary is saved, and when you return you choose to resume or continue">
 
@@ -77,7 +79,7 @@ Use `/handoff away pause` to pause away work for this session, or `resume` to st
 
 Preferences, corrections and facts become one Markdown notes file per project, loaded into every new conversation. Routines you repeat become project skills. Only the new part of the conversation is read, by Sonnet 5.5 at low effort.
 
-Unusable notes output and read errors leave the conversation available for retry. A partial write retries the original conversation segment without counting the same rule or procedure twice. Deleted memories return only when you bring them up in that new segment.
+If a notes update fails or gets unusable output, that slice of the conversation is kept for the next retry, without counting the same rule or procedure twice. Memories you delete come back only if you bring them up again in a new slice of conversation.
 
 ### Remembers where you stopped
 
