@@ -209,6 +209,45 @@ test('S1 離席 handoff 產生中：不被 S1 攔下', async ($, on) => {
   expect(w.submits.at(-1)).toBe('不應被過時交接攔下')
 })
 
+for (const changed of ['complete', 'session', 'attachment']) {
+  test(`離席生成後來源已前進，不採用晚到結果：${changed}`, async ($, on) => {
+    const w = world(on, 100_000, 1_000_000, { refresh: false, distill: false })
+    await endTurn($)
+    let release = () => {}
+    const gate = new Promise<void>(r => { release = r })
+    ctl.handoffGate = () => gate
+    await w.clock.advance(55 * 60_000)
+    if (changed === 'complete') await endTurn($)
+    if (changed === 'session') ctl.curSid = 'S2'
+    if (changed === 'attachment') await $.prompt.submit({ text: '', attachments: [{ type: 'image' }], origin: composer, wait: false })
+    release()
+    await w.clock.settle()
+    expect(w.get('away:S1')).toBeUndefined()
+    expect(w.get('away:S2')).toBeUndefined()
+    expect(w.get('handoffs:C--proj')).toBeUndefined()
+  })
+}
+
+for (const op of ['get', 'set']) {
+  test(`離席歷史${op}等待期間對話前進，晚到摘要不能resend採用`, async ($, on) => {
+    const w = world(on, 100_000, 1_000_000, { refresh: false, distill: false })
+    let fired = false
+    ctl.onStore = async (operation, key) => {
+      if (!fired && operation === op && key === 'handoffs:C--proj') {
+        fired = true
+        await say($, '離席摘要還在存檔時我已回來')
+      }
+    }
+    await endTurn($)
+    await w.clock.advance(55 * 60_000)
+    expect(fired).toBe(true)
+    expect(w.get('away:S1')).toBeUndefined()
+    await cmd($, 'resend')
+    await w.clock.settle()
+    expect(w.submits).toEqual(['離席摘要還在存檔時我已回來'])
+  })
+}
+
 test('S1 handoff fork 失敗：攔下的訊息在舊對話重新送出', async ($, on) => {
   const w = world(on, 650_000, 1_000_000, {}, [], 5)
   ctl.failHandoff = true

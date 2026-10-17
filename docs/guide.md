@@ -102,7 +102,7 @@ You won't need these in normal use. If `/handoff` is taken by your own command o
 | `/handoff dry` | Show a handoff summary and its cost, without clearing |
 | `/handoff distill` | Update the project notes now |
 | `/handoff resume` / `continue` | After being away: start fresh from the summary, or stay |
-| `/handoff resend` | Send the handoff summary again if it didn't arrive |
+| `/handoff resend [source-session-id]` | Send an undelivered summary again; specify its source session after a restart, in the same workspace |
 | `/handoff refresh on\|off`, `distill on\|off` | Turn cache keeping or project notes on or off |
 | `/handoff guard` | List guards; `suggest` drafts new ones, `on\|off\|drop N` approves, turns off or deletes one, `mode N deny\|remind` switches between blocking and reminding |
 
@@ -169,7 +169,7 @@ Start with `/handoff`: it shows context use, what's on, and the latest error fro
 |---|---|
 | `/handoff` isn't a command | The mod isn't loaded: check `claude plugin list` and your Claude Code version; for a clone, use an absolute path. If you have your own `/handoff`, use `/ctx-handoff`. |
 | Something odd and you suspect a mod | Start with `claude --safe-mode` and see whether it goes away. |
-| The new conversation didn't get the summary | `/handoff resend`. |
+| The new conversation didn't get the summary | `/handoff resend`. After a restart, use `/handoff resend <source-session-id>` from the failure message. Only records with a matching workspace source can be resent. |
 | Notes never update | Conversations under 30k tokens are skipped. Run `/handoff distill` and look for an error in `/handoff`. |
 | A command gives no answer | Run `/handoff` for the latest error, then [open an issue](https://github.com/cablate/ctx-handoff-mod/issues/new/choose) with its output. |
 

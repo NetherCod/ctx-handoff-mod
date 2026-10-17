@@ -75,6 +75,8 @@ Off by default, so Claude Code's own compact takes over. Turn on `auto_handoff` 
 
 Preferences, corrections and facts become one Markdown notes file per project, loaded into every new conversation. Routines you repeat become project skills. Only the new part of the conversation is read, by Sonnet 5.5 at low effort.
 
+Unusable notes output and read errors leave the conversation available for retry. A partial write retries the original conversation segment without counting the same rule or procedure twice. Deleted memories return only when you bring them up in that new segment.
+
 ### Remembers where you stopped
 
 <img src="docs/assets/resume.svg" width="900" alt="Animation: after /clear, the next conversation is told the last task, its state and the next step">

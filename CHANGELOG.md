@@ -6,6 +6,11 @@ All notable changes to ctx-handoff. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+### Fixed
+
+- Notes updates keep failed segments for retry, avoid duplicate rule and procedure counts after partial writes, and require new user quotes to restore deleted memories.
+- Undelivered handoffs can be recovered by source session in the same workspace after a restart. Late away summaries are not offered after the conversation moves on.
+
 ## [0.7.0] - 2026-10-15
 
 Handing off at the threshold is now off by default, so Claude Code's own compact takes over while everything else keeps running. Memories you delete stay deleted, guards your repo already has stop coming back, and handoffs keep who said what.

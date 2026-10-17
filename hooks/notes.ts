@@ -8,6 +8,8 @@ const FACT_TYPES = ['project', 'reference']
 export const INJECT_MIN_COUNT = 2
 const INJECT_RULES = 15
 export const EVIDENCE_KEEP = 3
+// 規則／流程根據的 [ctx-source:<完整 session id>:<起始 turn>:<終點 turn>] 標記辨識同批重試。
+// 舊根據原樣保留；沒有來源標記的歷史不猜測去重，update 仍保留根據行。
 export const NOTE_TAG = '[ctx-handoff 專案經驗]'
 export type Rule = { name: string; count: number; body: string[] }
 // 流程：重複做過的多步驟固定做法。存法和規則同形（標題行＋body 行），欄位是 body 裡的「- 時機：」、「- 步驟：」＋縮排編號行、「- 根據：」、「- 專案：」

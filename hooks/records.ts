@@ -14,6 +14,7 @@ export function describeUsage(u: Usage) {
   return t().usage(n(total), n(u.cacheRead), ratio.toFixed(2), n(u.cacheCreation), n(u.input), n(u.output), (u.ms / 1000).toFixed(1))
 }
 export type Away = { handoff: string; held?: string }
+export type PendingSubmit = { text: string; project: string }
 // 交接失敗紀錄：kind 是那次 handoff 的種類，reason 開頭註明失敗階段
 export type HandoffError = { at: number; sessionId: string; kind: Kind; reason: string; tokens: number | null; turns: number }
 

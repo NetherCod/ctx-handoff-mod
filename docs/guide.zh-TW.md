@@ -102,7 +102,7 @@ ctx-handoff 的完整說明：每個功能怎麼運作、所有設定與指令�
 | `/handoff dry` | 產生交接摘要並顯示花費，不清空 |
 | `/handoff distill` | 立刻整理專案筆記 |
 | `/handoff resume`／`continue` | 離開回來後：用摘要開新對話，或留在原對話 |
-| `/handoff resend` | 交接摘要沒送到時重送 |
+| `/handoff resend [source-session-id]` | 重送未送達摘要；重啟後在同工作區指定來源 session |
 | `/handoff refresh on\|off`、`distill on\|off` | 開關保持快取或專案筆記 |
 | `/handoff guard` | 列出守門；`suggest` 草擬新的，`on\|off\|drop N` 核准、停用或刪除，`mode N deny\|remind` 切換擋下或提醒 |
 
@@ -169,7 +169,7 @@ Claude Code 在大多數地方都會載入 mod，但只有終端機與 Desktop a
 |---|---|
 | 沒有 `/handoff` 指令 | mod 沒載入：看 `claude plugin list` 與 Claude Code 版本；用 clone 的話路徑要是絕對路徑。你有自己的 `/handoff` 時改用 `/ctx-handoff`。 |
 | 行為怪怪的，懷疑是 mod | 用 `claude --safe-mode` 啟動，看問題是否消失。 |
-| 新對話沒收到摘要 | `/handoff resend`。 |
+| 新對話沒收到摘要 | `/handoff resend`。重啟後用失敗訊息裡的 `/handoff resend <source-session-id>`；只重送工作區來源相符的紀錄。 |
 | 筆記一直沒更新 | 不到 30k token 的對話不整理。打 `/handoff distill`，再看 `/handoff` 有沒有錯誤。 |
 | 指令沒有回應 | 打 `/handoff` 看最近的錯誤，附上輸出[開 issue](https://github.com/cablate/ctx-handoff-mod/issues/new/choose)。 |
 

@@ -50,13 +50,13 @@ test('S6 兩個 session 各寫自己的 pendingSubmit：第二個成功只刪自
   ctl.failSubmits = 1
   await stop($)
   await w.clock.settle()
-  expect(typeof (w.get('pendingSubmit:S1'))).toBe('string')
+  expect(w.get('pendingSubmit:S1')).toMatchObject({ project: 'C--proj' })
   ctl.curSid = 'S2'
   await cmd($, 'now')
   await w.clock.settle()
   expect(w.submits.length).toBe(1)
   expect(w.get('pendingSubmit:S2')).toBeUndefined()
-  expect(typeof (w.get('pendingSubmit:S1'))).toBe('string')
+  expect(w.get('pendingSubmit:S1')).toMatchObject({ project: 'C--proj' })
 })
 
 test('S6 攔下訊息＋/clear 成功＋送出失敗：/handoff resend 送出 handoff 與訊息，刪掉 pending', async ($, on) => {
@@ -67,7 +67,7 @@ test('S6 攔下訊息＋/clear 成功＋送出失敗：/handoff resend 送出 ha
   await stop($)
   await w.clock.settle()
   expect(w.submits).toEqual([])
-  const pending = (w.get('pendingSubmit:S1')) as string
+  const pending = (w.get('pendingSubmit:S1') as { text: string }).text
   expect(pending).toContain('HANDOFF: 測試')
   expect(pending).toContain('中途訊息')
   expect((await cmd($, '')).text).toContain('未送達的 handoff')

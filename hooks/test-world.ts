@@ -35,6 +35,7 @@ const fresh = () => ({
   failRead: undefined as { path: string; reason: string } | undefined,
   failStore: undefined as { key: string; remaining: number } | undefined,
   failDelete: undefined as string | undefined,
+  onStore: undefined as ((op: 'get' | 'set', key: string) => Promise<void>) | undefined,
   // $.session.repo()：依目前工作目錄回答（會跟著 cd 變）
   curRepo: null as { root: string; remote: string | null; internal: boolean; name: string } | null,
   // 交接 fork（不是整理）回傳失敗
@@ -86,10 +87,12 @@ export const world = (on: On, tokens: number, window = 1_000_000, store: Record<
   on('ui.toast', (_$, e: unknown) => { toasts.push(JSON.stringify(e)); return { value: undefined } })
   // 自己的 store：測試要直接讀寫（$.store 不在測試引擎的 $ 上）；值經過 JSON 來回，和真的一樣
   const kv = new Map<string, unknown>(Object.entries(store))
-  on('store.get', (_$, e: { key: string }) => ({
-    value: kv.has(e.key) ? JSON.parse(JSON.stringify(kv.get(e.key))) : e.key === 'settings' ? { ...ctl.panelSettings } : undefined,
-  }))
-  on('store.set', (_$, e: { key: string; value: unknown }) => {
+  on('store.get', async (_$, e: { key: string }) => {
+    await ctl.onStore?.('get', e.key)
+    return { value: kv.has(e.key) ? JSON.parse(JSON.stringify(kv.get(e.key))) : e.key === 'settings' ? { ...ctl.panelSettings } : undefined }
+  })
+  on('store.set', async (_$, e: { key: string; value: unknown }) => {
+    await ctl.onStore?.('set', e.key)
     if (ctl.failStore?.key === e.key && ctl.failStore.remaining > 0) { ctl.failStore.remaining -= 1; return { deny: 'store write failed' } }
     kv.set(e.key, JSON.parse(JSON.stringify(e.value)))
     return { value: undefined }

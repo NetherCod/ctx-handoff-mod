@@ -11,7 +11,7 @@ import { progressForPrompt, progressKey, progressOffer, withOffered } from './pr
 import type { Progress, ProgressFields } from './progress'
 import { GUARD_ASK_ITEMS, GUARD_MIN_COUNT, applyGuardChange, guardAskText, guardCandidatesOf, guardChangeOf, guardHitKey, guardHits, guardListText, guardPrompt, guardSummaryText, inputText, parseGuards, withHits, withProposals } from './guards'
 import type { Guard, GuardMode } from './guards'
-import { NOTE_TAG, PROJECT_DECLINED, PROJECT_IN, contextText, localStamp, memHead, noteBlock, parseNotes, renderNotes, tag } from './notes'
+import { NOTE_TAG, PROJECT_DECLINED, PROJECT_IN, contextText, localStamp, memHead, noteBlock, parseNotes, projectOf, renderNotes, tag } from './notes'
 import type { Notes, Rule } from './notes'
 import { encodeProject, isAbs, resolveDots, slash } from './paths'
 import { anchorOf, transcriptOf } from './transcript'
@@ -21,7 +21,7 @@ import { resetRuntime, rt } from './runtime'
 import { doneCheck, freshWork, noteCall, trackFailure } from './loops'
 import { clearNext, noteStep, peekNext, resolveReplyLang, takePending } from './lang'
 import { addStat, awayKey, describeUsage, pendingKey, pruneSeen, statsKey } from './records'
-import type { Away, DistillError, DistillLast, HandoffError, Kind, Saved, Stats, Usage } from './records'
+import type { Away, DistillError, DistillLast, HandoffError, Kind, PendingSubmit, Saved, Stats, Usage } from './records'
 import { HANDOFF_PROMPT, forkFailure, heldBlock } from './handoff'
 import { buryMissing, isBuried, memTitles, tombKey } from './tombstones'
 import type { Tombstones } from './tombstones'
@@ -119,9 +119,15 @@ async function recordFailure($: EngineInterface, kind: Kind, tokens: number | nu
   if (kind === 'present' || kind === 'manual') rt.retryAfter = { turns, at }
 }
 
-async function makeHandoff($: EngineInterface, kind: Kind, tokens: number | null) {
+async function makeHandoff($: EngineInterface, kind: Kind, tokens: number | null, source?: { sid: string; activity: number }) {
+  const sid = source?.sid ?? await $.session.id()
   const started = await $.clock.now()
   const r = await forkWithin($, HANDOFF_PROMPT, HANDOFF_TIMEOUT_MS)
+  if (source && (rt.activity !== source.activity || await $.session.id() !== sid)) {
+    $.ui.log(t().idle.outdated)
+    await stat($, 'away.stale')
+    return undefined
+  }
   if (!r.isAnswered) {
     $.ui.log(t().handoff.failedLog(forkFailure(r.reason)))
     $.ui.toast(t().handoff.failedToast)
@@ -136,10 +142,12 @@ async function makeHandoff($: EngineInterface, kind: Kind, tokens: number | null
     output: r.usage.output_tokens,
     ms: at - started,
   }
-  const saved: Saved = { at, sessionId: await $.session.id(), kind, tokens, text: r.text, usage }
+  const saved: Saved = { at, sessionId: sid, kind, tokens, text: r.text, usage }
   const handoffsKey = `handoffs:${await projectKey($)}`
   const list = ((await $.store.get(handoffsKey)) as Saved[] | undefined) ?? []
+  if (source && (rt.activity !== source.activity || await $.session.id() !== sid)) return undefined
   await $.store.set(handoffsKey, [...list, saved].slice(-KEEP))
+  if (source && (rt.activity !== source.activity || await $.session.id() !== sid)) return undefined
   rt.lastHandoff = { text: r.text }
   $.ui.log(t().handoff.savedLog(kind, describeUsage(usage)))
   return r.text
@@ -156,7 +164,7 @@ async function submitText($: EngineInterface, text: string) {
 async function clearAndSubmit($: EngineInterface, text: string) {
   const sid = await $.session.id()
   const key = pendingKey(sid)
-  await $.store.set(key, text)
+  await $.store.set(key, { text, project: await projectKey($) } satisfies PendingSubmit)
   await touchSeen($, key)
   rt.myPending = { sid }
   rt.pendingToasted = false
@@ -327,14 +335,39 @@ async function distill($: EngineInterface, why: string, queue = true, snap?: Dis
     }
     const now = await $.clock.now()
     const stamp = localStamp(now)
-    const parsed = parseActions(r.text, notes, userText, candidates.map(c => c.id), drafts.map(d => d.id))
+    const completed = new Map<string, string>()
+    const answered = new Map<string, string>()
+    if (retry) {
+      for (const [prefix, items] of [['R', notes.rules], ['P', notes.procedures]] as const) {
+        items.forEach((item, i) => {
+          const state = projectOf(item)?.replace(/（第 \d+ 次時）$/, '')
+          if (state) completed.set(`${prefix}${i + 1}`, state)
+        })
+      }
+      for (const g of await loadGuards($)) {
+        if (g.project) completed.set(`G${g.id}`, g.project)
+        if (g.state === 'on' || g.state === 'off') answered.set(`G${g.id}`, g.state)
+      }
+    }
+    const parsed = parseActions(r.text, notes, userText, [...candidates.map(c => c.id), ...completed.keys()], [...drafts.map(d => d.id), ...answered.keys()])
     const rejected = parsed.rejected
+    let noops = 0
     const actions = (await checkPromotions($, parsed.actions, rejected)).filter(a => {
+      if ((a.op === 'approve_guard' || a.op === 'decline_guard') && answered.has(a.id)) {
+        if (answered.get(a.id) === (a.op === 'approve_guard' ? 'on' : 'off')) noops += 1
+        else addRejected(rejected, t().reject.noId(a.id), JSON.stringify(a))
+        return false
+      }
+      if ((a.op === 'in_project' || a.op === 'not_in_project') && completed.has(a.id)) {
+        if (completed.get(a.id) === (a.op === 'in_project' ? `${PROJECT_IN}${a.where}` : PROJECT_DECLINED)) noops += 1
+        else addRejected(rejected, t().reject.noId(a.id), JSON.stringify(a))
+        return false
+      }
       if (a.op !== 'add_memory' || !isBuried(tombs, a.title, a.quote !== undefined && isQuoted(a.quote, currentUserText))) return true
       addRejected(rejected, t().reject.buried(a.title), JSON.stringify(a))
       return false
     })
-    if (actions.length === 0 && rejected.count > 0) {
+    if (actions.length === 0 && noops === 0 && rejected.count > 0) {
       const usage = describeUsage({ input: r.usage.input_tokens, cacheRead: r.usage.cache_read_input_tokens, cacheCreation: r.usage.cache_creation_input_tokens, output: r.usage.output_tokens, ms: now - started })
       await $.store.set(`distill:last:${await projectKey($)}`, { at: now, why, changes: [], file, usage, rejected } satisfies DistillLast)
       await fail(t().distill.noUsableActions)
@@ -351,11 +384,11 @@ async function distill($: EngineInterface, why: string, queue = true, snap?: Dis
     }
     const source = `${sid}:${retry?.fromTurn ?? prev?.turn ?? 0}:${turns}`
     const { notes: updated, changes: noteChanges } = applyActions(actions, notes, stamp.slice(0, 10), sid, source)
+    if (!retry && (noteChanges.length > 0 || guardPromotions(actions).length > 0 || guardAnswers(actions).length > 0 || latestProgress(actions))) {
+      const last = rows.at(-1)
+      await $.store.set(retryKey, { fromTurn: prev?.turn ?? 0, turn: turns, anchor, rowCount: rows.length, ...(last ? { last: { role: last.role, text: last.text } } : {}) } satisfies DistillEndpoint)
+    }
     if (noteChanges.length > 0) {
-      if (!retry) {
-        const last = rows.at(-1)
-        await $.store.set(retryKey, { fromTurn: prev?.turn ?? 0, turn: turns, anchor, rowCount: rows.length, ...(last ? { last: { role: last.role, text: last.text } } : {}) } satisfies DistillEndpoint)
-      }
       await $.fs.write(file, renderNotes(updated, stamp))
       await $.store.set(tk, { ...tombs, known: memTitles(updated) })
     }
@@ -441,6 +474,8 @@ async function resumeSchedule($: EngineInterface) {
 }
 
 async function onIdle($: EngineInterface) {
+  const activity = rt.activity
+  const sid = await $.session.id()
   await initLang($)
   rt.idle = undefined
   await update($, idleState, () => null)
@@ -464,10 +499,20 @@ async function onIdle($: EngineInterface) {
   rt.busy = true
   try {
     if (await isDistillOn($)) await distill($, t().distill.why.away)
-    const handoff = await makeHandoff($, 'away', tokens)
+    if (rt.activity !== activity || await $.session.id() !== sid) return
+    const handoff = await makeHandoff($, 'away', tokens, { sid, activity })
     if (handoff === undefined) return
-    const key = awayKey(await $.session.id())
+    if (rt.activity !== activity || await $.session.id() !== sid) {
+      $.ui.log(t().idle.outdated)
+      await stat($, 'away.stale')
+      return
+    }
+    const key = awayKey(sid)
     await $.store.set(key, { handoff } satisfies Away)
+    if (rt.activity !== activity || await $.session.id() !== sid) {
+      await $.store.delete(key)
+      return
+    }
     await touchSeen($, key)
     $.ui.log(t().idle.awaySavedLog(tokens))
     await stat($, 'handoff.away.ok')
@@ -527,13 +572,13 @@ async function present($: EngineInterface, tokens: number | null, kind: 'present
       await drain(resubmit)
     } else if (failed) {
       $.ui.log(t().handoff.submitFailedLog(failed.reason))
-      $.ui.toast(t().handoff.submitFailedToast)
+      $.ui.toast(`${t().handoff.submitFailedToast}\n/handoff resend ${sid}`)
       await recordFailure($, kind, tokens, t().handoff.reasonSubmit(failed.reason), sid)
       // 文字建好之後才到的訊息：補進這份 pendingSubmit，重送時一起送
       let pending = text
       await drain(async batch => {
         pending += included.length === 0 && pending === text ? `\n\n${heldBlock([batch])}` : `\n\n${batch}`
-        await $.store.set(pendingKey(sid), pending)
+        await $.store.set(pendingKey(sid), { text: pending, project: await projectKey($) } satisfies PendingSubmit)
       })
     } else {
       rt.retryAfter = undefined
@@ -1246,6 +1291,7 @@ export const register: Register = on => {
     const out = await next(e)
     // 被中斷的回合沒有 Stop：清掉這一輪的改檔紀錄，免得算到下一輪
     if (e.agentId === undefined && e.isAborted) rt.work = freshWork()
+    if (e.agentId === undefined) rt.activity += 1
     if (e.agentId !== undefined || rt.busy) return out
     // 別的 session 可能改了經驗檔或守門：每個回合結束重算一次面板快照（面板沒開時只讀一個 state）
     await refreshPanel($)
@@ -1293,6 +1339,7 @@ export const register: Register = on => {
   on('prompt.submit', async ($, e, next) => {
     const isHuman = e.origin.kind === 'composer' || e.origin.kind === 'bridge'
     if (!isHuman) return next(e)
+    rt.activity += 1
     await initLang($)
     try { await reloadConfig($) } catch {}
     const isSlash = e.text.trimStart().startsWith('/')
@@ -1369,7 +1416,7 @@ export const register: Register = on => {
       case 'distill': return distillCommand($, arg)
       case 'resume': return resume($)
       case 'continue': return keepOld($)
-      case 'resend': return resend($)
+      case 'resend': return resend($, arg)
       case 'refresh': return refreshCommand($, arg)
       case 'guard': {
         const r = await guardCommand($, [arg, ...rest])
@@ -1482,16 +1529,18 @@ ${handoff}`)
   return { text: `${t().cmd.resuming}` }
 }
 
-// 重新送出沒送達的 handoff：只用這個 process 自己的紀錄，不碰其他 session 的 pendingSubmit；不 /clear
-async function resend($: EngineInterface) {
+// 指定來源 session 可找回重啟前的 pending；工作區必須相同，不猜其他 session，不 /clear。
+async function resend($: EngineInterface, sourceSid = '') {
   let text: string | undefined
   let key: string | undefined
-  if (rt.myPending) {
-    key = pendingKey(rt.myPending.sid)
-    const stored = await $.store.get(key)
-    text = typeof stored === 'string' ? stored : undefined
+  const sid = sourceSid || rt.myPending?.sid
+  if (sid) {
+    const candidateKey = pendingKey(sid)
+    const stored = (await $.store.get(candidateKey)) as PendingSubmit | undefined
+    if (typeof stored === 'string') return { text: t().cmd.pendingUnbound }
+    if (stored?.project === await projectKey($)) { key = candidateKey; text = stored.text }
   }
-  if (text === undefined && rt.lastHandoff) {
+  if (text === undefined && !sourceSid && rt.lastHandoff) {
     text = `${tag} ${t().cmd.resendIntro}
 
 ${rt.lastHandoff.text}`

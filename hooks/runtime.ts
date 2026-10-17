@@ -11,6 +11,7 @@ export const rt = {
   refreshes: 0,
   // 互斥：同一時間只處理一個 handoff（不攔訊息）
   busy: false,
+  activity: 0,
   // 在場交接進行中（門檻或 /handoff now）：使用者訊息先攔下，交接後一併送出
   presenting: false,
   held: [] as string[],
@@ -57,6 +58,7 @@ export function resetRuntime() {
   rt.idle = undefined
   rt.refreshes = 0
   rt.busy = false
+  rt.activity = 0
   rt.presenting = false
   rt.held = []
   rt.pendingNotes.clear()

@@ -328,7 +328,7 @@ for (const when of ['before', 'after']) {
   test(`必要經驗檔讀取失敗不覆寫、不推進：${when}`, async ($, on) => {
     const w = world(on, 100_000, 1_000_000, {}, [], 5)
     w.files.set(NOTES, EXISTING)
-    const deny = () => { ctl.failRead = { path: NOTES, reason: 'EACCES: permission denied' } }
+    const deny = () => { ctl.failRead = { path: NOTES, reason: 'EACCES: permission denied opening /tmp/ENOENT: notes' } }
     if (when === 'before') deny()
     else ctl.onFork = deny
     await distillNow($)
@@ -395,6 +395,53 @@ test('完成後重試終點清理失敗不重播或回退checkpoint', async ($, 
   await distillNow($)
   expect(w.files.get(NOTES)).toContain('### 規則一（3 次）')
   expect(w.get('distill:S1')).toMatchObject({ turn: 6 })
+})
+
+for (const action of [
+  { op: 'approve_guard', id: 'G1', quote: '同意採用守門' },
+  { op: 'in_project', id: 'R1', where: 'CLAUDE.md' },
+]) {
+  test(`部分成功重試已達成的狀態是合法no-op：${action.op}`, async ($, on) => {
+    const w = world(on, 100_000, 1_000_000, { 'guards:C--proj': [{ id: 1, state: 'proposed', rule: '測試守門', tool: 'Bash', match: 'push', message: '提醒', mode: 'remind', at: 0 }] }, [], 5)
+    w.files.set(NOTES, EXISTING.replace('規則一（1 次）', '規則一（3 次）'))
+    w.files.set('C:/proj/CLAUDE.md', '規則已在此')
+    await say($, '同意採用守門')
+    ctl.distillReply = actionsReply({ op: 'add_memory', type: 'project', title: '本次事實', evidence: '測試' }, action)
+    ctl.failStore = { key: 'distill:last:C--proj', remaining: 1 }
+    await distillNow($)
+    expect(w.get('distill:S1')).toBeUndefined()
+    ctl.distillReply = actionsReply(action)
+    expect((await distillNow($)).text).toContain('整理完成')
+    expect(w.get('distill:S1')).toMatchObject({ turn: 5 })
+    expect(lastOf(w).changes).toEqual([])
+  })
+}
+
+test('原片段終點已消失時停止重試，不猜位置或推進', async ($, on) => {
+  const w = world(on, 100_000, 1_000_000, { 'distill:retry:S1': { fromTurn: 0, turn: 5, rowCount: 1, last: { role: 'user', text: '原始訊息' } } }, [], 6)
+  w.files.set(NOTES, EXISTING)
+  w.rows.push({ role: 'user', text: '壓縮後不同訊息', toolUses: [] })
+  await distillNow($)
+  expect(w.completes).toEqual([])
+  expect(w.files.get(NOTES)).toBe(EXISTING)
+  expect(w.get('distill:S1')).toBeUndefined()
+  expect(w.get('distill:error:C--proj')).toMatchObject({ reason: '找不到上次部分寫入的對話終點；停止整理，未覆寫筆記或推進進度' })
+})
+
+test('新增規則與流程部分寫入後改輸出confirm，不把同一事件算兩次', async ($, on) => {
+  const w = world(on, 100_000, 1_000_000, {}, [], 5)
+  ctl.distillReply = actionsReply(
+    { op: 'add_rule', name: '先測試', rule: '先測試', applies: '改程式', not_applies: '改文件', evidence: '本次要求' },
+    { op: 'add_procedure', name: '驗收', when: '改完程式', steps: ['測試', '檢查'], evidence: '本次流程' },
+  )
+  ctl.onFork = () => { ctl.failStore = { key: 'tombstones:C--proj', remaining: 1 } }
+  await distillNow($)
+  ctl.onFork = undefined
+  ctl.distillReply = actionsReply({ op: 'confirm_rule', id: 'R1', evidence: '改寫同一要求' }, { op: 'confirm_procedure', id: 'P1', evidence: '改寫同一流程' })
+  await distillNow($)
+  expect(w.files.get(NOTES)).toContain('### 先測試（1 次）')
+  expect(w.files.get(NOTES)).toContain('### 驗收（1 次）')
+  expect(w.get('distill:S1')).toMatchObject({ turn: 5 })
 })
 
 // 事故（2026-10-14，issue #3）：使用者手動整理掉的記憶，整理不知道刪過，同一段對話還在談那些主題就會加回來
