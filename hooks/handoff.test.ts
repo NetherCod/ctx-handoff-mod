@@ -204,7 +204,9 @@ test('S1 離席 handoff 產生中：不被 S1 攔下', async ($, on) => {
   expect(w.submits).toEqual(['人類訊息'])
   release()
   await w.clock.settle()
-  expect(w.get('away:S1')).toBeDefined()
+  expect(w.get('away:S1')).toBeUndefined()
+  await say($, '不應被過時交接攔下')
+  expect(w.submits.at(-1)).toBe('不應被過時交接攔下')
 })
 
 test('S1 handoff fork 失敗：攔下的訊息在舊對話重新送出', async ($, on) => {

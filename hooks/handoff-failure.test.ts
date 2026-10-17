@@ -97,6 +97,27 @@ test('S6 新 process 的 resend：不送別的 session 的 pending；有本 proc
   expect(typeof (w.get('pendingSubmit:OTHER'))).toBe('string')
 })
 
+test('重啟後可明確指定來源session重送未送達交接，成功後才刪', async ($, on) => {
+  const w = world(on, 100_000, 1_000_000, { 'pendingSubmit:OLD': { text: '來源交接與未送達文字', project: 'C--proj' } })
+  ctl.failSubmits = 1
+  await cmd($, 'resend OLD')
+  await w.clock.settle()
+  expect(w.get('pendingSubmit:OLD')).toBeDefined()
+  await cmd($, 'resend OLD')
+  await w.clock.settle()
+  expect(w.submits).toEqual(['來源交接與未送達文字'])
+  expect(w.get('pendingSubmit:OLD')).toBeUndefined()
+  expect(w.commands).toEqual([])
+})
+
+test('明確來源也不能重送其他工作區的pending', async ($, on) => {
+  const w = world(on, 100_000, 1_000_000, { 'pendingSubmit:OTHER': { text: '其他工作區內容', project: 'D--elsewhere' } })
+  await cmd($, 'resend OTHER')
+  await w.clock.settle()
+  expect(w.submits).toEqual([])
+  expect(w.get('pendingSubmit:OTHER')).toBeDefined()
+})
+
 // ---------- 交接時間、逾時、搬移、專案鍵 ----------
 
 const hang = () => new Promise<void>(() => {})
