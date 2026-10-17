@@ -106,6 +106,16 @@ ctx-handoff 是持續成長的長時間工作工具箱：和 Claude 一起工作
 - [參與貢獻](CONTRIBUTING.md)：怎麼從原始碼執行、送出修改。問題回報與點子請開 [issue](https://github.com/cablate/ctx-handoff-mod/issues/new/choose)。
 - [安全性](SECURITY.md)：怎麼私下回報漏洞。
 
+## Star 歷史
+
+<a href="https://star-history.com/#cablate/ctx-handoff-mod&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=cablate/ctx-handoff-mod&type=Date&theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=cablate/ctx-handoff-mod&type=Date" />
+    <img alt="Star 歷史圖" src="https://api.star-history.com/svg?repos=cablate/ctx-handoff-mod&type=Date" />
+  </picture>
+</a>
+
 ## 授權
 
 [MIT](LICENSE)

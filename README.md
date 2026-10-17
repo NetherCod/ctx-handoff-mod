@@ -106,6 +106,16 @@ Everything is on the panel's Settings tab (`/handoff panel`, then <kbd>5</kbd>),
 - [Contributing](CONTRIBUTING.md): how to run it from source and send changes. Bug reports and ideas go in [issues](https://github.com/cablate/ctx-handoff-mod/issues/new/choose).
 - [Security](SECURITY.md): how to report a vulnerability privately.
 
+## Star history
+
+<a href="https://star-history.com/#cablate/ctx-handoff-mod&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=cablate/ctx-handoff-mod&type=Date&theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=cablate/ctx-handoff-mod&type=Date" />
+    <img alt="Star history chart" src="https://api.star-history.com/svg?repos=cablate/ctx-handoff-mod&type=Date" />
+  </picture>
+</a>
+
 ## License
 
 [MIT](LICENSE)
