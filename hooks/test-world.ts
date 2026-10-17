@@ -34,6 +34,7 @@ const fresh = () => ({
   failWrite: undefined as string | undefined,
   failRead: undefined as { path: string; reason: string } | undefined,
   failStore: undefined as { key: string; remaining: number } | undefined,
+  failDelete: undefined as string | undefined,
   // $.session.repo()：依目前工作目錄回答（會跟著 cd 變）
   curRepo: null as { root: string; remote: string | null; internal: boolean; name: string } | null,
   // 交接 fork（不是整理）回傳失敗
@@ -93,7 +94,11 @@ export const world = (on: On, tokens: number, window = 1_000_000, store: Record<
     kv.set(e.key, JSON.parse(JSON.stringify(e.value)))
     return { value: undefined }
   })
-  on('store.delete', (_$, e: { key: string }) => { kv.delete(e.key); return { value: undefined } })
+  on('store.delete', (_$, e: { key: string }) => {
+    if (ctl.failDelete === e.key) return { deny: 'store delete failed' }
+    kv.delete(e.key)
+    return { value: undefined }
+  })
   on('store.keys', () => ({ value: [...kv.keys()] }))
   const get = (key: string) => kv.get(key)
   const put = (key: string, value: unknown) => { kv.set(key, value) }

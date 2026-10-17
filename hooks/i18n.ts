@@ -88,6 +88,8 @@ const zh = {
     toast: (n: number, queued: boolean, file: string) => `經驗已更新 ${n} 項${queued ? '，會跟著你下一則訊息帶入' : ''}：${file}`,
     writeFailed: (err: string) => `寫檔失敗：${err}`,
     noUsableActions: '整理輸出沒有可採用的動作；已保留這段對話供下次重試',
+    retryLost: '找不到上次部分寫入的對話終點；停止整理，未覆寫筆記或推進進度',
+    retryCleanup: (err: string) => `整理已完成，但重試終點清理失敗：${err}`,
   },
 
   // 狀態列
@@ -474,6 +476,8 @@ const en: Messages = {
     toast: (n, queued, file) => `Notes updated: ${n} change${s(n)}${queued ? ', sent along with your next message' : ''}: ${file}`,
     writeFailed: err => `could not write the file: ${err}`,
     noUsableActions: 'No usable actions in the notes output; the conversation is kept for retry',
+    retryLost: 'The previous partial update endpoint is missing; notes and progress were not changed',
+    retryCleanup: err => `Notes updated, but retry endpoint cleanup failed: ${err}`,
   },
 
   status: {

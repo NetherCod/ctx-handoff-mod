@@ -357,6 +357,46 @@ test('經驗檔寫成後 store 失敗，同一片段重試不重複增加規則�
   expect(w.get('distill:S1')).toMatchObject({ turn: 5 })
 })
 
+test('部分寫入重試凍結原片段，新來的相同要求留給下一批', async ($, on) => {
+  let turns = 5
+  const w = world(on, 100_000, 1_000_000, {}, [], () => turns)
+  w.files.set(NOTES, EXISTING)
+  await say($, '使用者再次要求做 X')
+  ctl.distillReply = actionsReply({ op: 'confirm_rule', id: 'R1', evidence: '使用者再次要求做 X' }, { op: 'update_rule', id: 'R1', rule: '改做 X' })
+  ctl.onFork = () => { ctl.failStore = { key: 'tombstones:C--proj', remaining: 1 } }
+  await distillNow($)
+  expect(w.files.get(NOTES)).toContain('### 規則一（2 次）')
+  ctl.onFork = undefined
+  turns = 6
+  await say($, '下一批的新工作，使用者再次要求做 X')
+  ctl.distillReply = actionsReply({ op: 'confirm_rule', id: 'R1', evidence: '換句話重述同一要求' })
+  await distillNow($)
+  expect(w.completes[1]?.prompt).not.toContain('下一批的新工作')
+  expect(w.files.get(NOTES)).toContain('### 規則一（2 次）')
+  expect(w.get('distill:S1')).toMatchObject({ turn: 5 })
+  await distillNow($)
+  expect(w.completes[2]?.prompt).toContain('下一批的新工作')
+  expect(w.files.get(NOTES)).toContain('### 規則一（3 次）')
+  expect(w.get('distill:S1')).toMatchObject({ turn: 6 })
+})
+
+test('完成後重試終點清理失敗不重播或回退checkpoint', async ($, on) => {
+  let turns = 5
+  const w = world(on, 100_000, 1_000_000, {}, [], () => turns)
+  w.files.set(NOTES, EXISTING)
+  ctl.failDelete = 'distill:retry:S1'
+  ctl.distillReply = actionsReply({ op: 'confirm_rule', id: 'R1', evidence: '再講一次' })
+  expect((await distillNow($)).text).toContain('整理完成')
+  expect(w.get('distill:S1')).toMatchObject({ turn: 5 })
+  expect(w.get('distill:retry:S1')).toBeDefined()
+  await distillNow($)
+  expect(w.completes.length).toBe(1)
+  turns = 6
+  await distillNow($)
+  expect(w.files.get(NOTES)).toContain('### 規則一（3 次）')
+  expect(w.get('distill:S1')).toMatchObject({ turn: 6 })
+})
+
 // 事故（2026-10-14，issue #3）：使用者手動整理掉的記憶，整理不知道刪過，同一段對話還在談那些主題就會加回來
 test('墓碑：直接改檔刪掉的記憶，整理加不回來；使用者又提起（附原話）才加回', async ($, on) => {
   let n = 5

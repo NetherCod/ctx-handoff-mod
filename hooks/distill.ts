@@ -394,11 +394,12 @@ export function latestProgress(actions: Action[]): ProgressFields | undefined {
 
 // 依序套用已驗證的動作；刪除先標記成 undefined，編號不會因此位移
 // sid：寫進記憶根據的 session（前 8 碼），需要時回對話檔查全文
-export function applyActions(actions: Action[], n: Notes, day: string, sid = ''): { notes: Notes; changes: Change[] } {
+export function applyActions(actions: Action[], n: Notes, day: string, sid = '', source?: string): { notes: Notes; changes: Change[] } {
   const field = (label: string, value: string) => `- ${label}：${value}`
   const memory = n.memory.map(m => ({ ...m, evidence: [...m.evidence] })) as (Memory | undefined)[]
   const addedMem: Memory[] = []
   const stamp = `${day}${sid ? ` ${sid.slice(0, 8)}` : ''}`
+  const marker = source ? ` [ctx-source:${source}]` : ''
   // 日期由程式補：模型自己在開頭寫的日期去掉，避免重複
   const evidenceOf = (a: MemoryFields) => {
     const evidence = a.evidence?.replace(/^\d{4}-\d{2}-\d{2}\s*[｜|：:]?\s*/, '')
@@ -453,7 +454,7 @@ export function applyActions(actions: Action[], n: Notes, day: string, sid = '')
         added.push({
           name: a.name,
           count: 1,
-          body: [field('規則', a.rule), field('適用', `${a.applies}｜不適用：${a.notApplies}`), field('根據', `${day} ${a.evidence}`)],
+          body: [field('規則', a.rule), field('適用', `${a.applies}｜不適用：${a.notApplies}`), field('根據', `${day} ${a.evidence}${marker}`)],
         })
         changes.push(t().change.addRule(a.name, a.rule))
         break
@@ -461,9 +462,10 @@ export function applyActions(actions: Action[], n: Notes, day: string, sid = '')
       case 'confirm_rule': {
         const r = rules[a.i]
         if (!r) break
+        if (marker && r.body.some(l => l.startsWith('- 根據：') && l.endsWith(marker))) break
         r.count += 1
         const evidence = r.body.filter(l => l.startsWith('- 根據：'))
-        r.body = [...r.body.filter(l => !l.startsWith('- 根據：')), ...[...evidence, field('根據', `${day} ${a.evidence}`)].slice(-EVIDENCE_KEEP)]
+        r.body = [...r.body.filter(l => !l.startsWith('- 根據：')), ...[...evidence, field('根據', `${day} ${a.evidence}${marker}`)].slice(-EVIDENCE_KEEP)]
         changes.push(t().change.confirmRule(r.name, r.count))
         break
       }
@@ -484,16 +486,17 @@ export function applyActions(actions: Action[], n: Notes, day: string, sid = '')
       case 'add_procedure': {
         // 同名流程已存在：略過
         if (n.procedures.some(p => p.name === a.name) || addedProc.some(p => p.name === a.name)) break
-        addedProc.push({ name: a.name, count: 1, body: procBody(a.when, a.steps, [field('根據', `${day} ${a.evidence}`)]) })
+        addedProc.push({ name: a.name, count: 1, body: procBody(a.when, a.steps, [field('根據', `${day} ${a.evidence}${marker}`)]) })
         changes.push(t().change.addProcedure(a.name, a.steps.length))
         break
       }
       case 'confirm_procedure': {
         const p = procedures[a.i]
         if (!p) break
+        if (marker && p.body.some(l => l.startsWith('- 根據：') && l.endsWith(marker))) break
         p.count += 1
         const evidence = p.body.filter(l => l.startsWith('- 根據：'))
-        p.body = [...p.body.filter(l => !l.startsWith('- 根據：')), ...[...evidence, field('根據', `${day} ${a.evidence}`)].slice(-EVIDENCE_KEEP)]
+        p.body = [...p.body.filter(l => !l.startsWith('- 根據：')), ...[...evidence, field('根據', `${day} ${a.evidence}${marker}`)].slice(-EVIDENCE_KEEP)]
         changes.push(t().change.confirmProcedure(p.name, p.count))
         break
       }
