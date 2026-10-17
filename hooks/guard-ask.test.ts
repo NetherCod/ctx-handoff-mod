@@ -18,7 +18,7 @@ test('守門升級：放進 repo 之後又被糾正的規則，整理完背景�
   const w = world(on, 100_000, 1_000_000, {}, [], () => turns)
   w.files.set(NOTES, NOTES_ESCALATED)
   let calls = 0
-  ctl.onFork = () => { ctl.distillReply = ++calls === 2 ? actionsReply(DRAFT) : actionsReply() }
+  ctl.onComplete = () => { ctl.distillReply = ++calls === 2 ? actionsReply(DRAFT) : actionsReply() }
   await distillNow($)
   expect(w.completes.length).toBe(2)
   expect(w.completes[1]?.system).toContain('### 推送前先跑 preflight')
@@ -37,7 +37,7 @@ test('守門升級：整理完成前換 session，自動起草與整理的用量
   const w = world(on, 100_000, 1_000_000, {}, [], 5)
   w.files.set(NOTES, NOTES_ESCALATED)
   let calls = 0
-  ctl.onFork = () => {
+  ctl.onComplete = () => {
     calls += 1
     ctl.distillReply = calls === 2 ? actionsReply(DRAFT) : actionsReply()
     if (calls === 1) ctl.curSid = 'S2'

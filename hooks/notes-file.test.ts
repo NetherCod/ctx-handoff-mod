@@ -244,7 +244,7 @@ test('S7 記憶的欄位原樣保留、認不得的延續行併進標題、自�
     { op: 'add_rule', name: '規則乙', rule: '做乙', applies: 'x', not_applies: 'y', evidence: '新的' },
   )
   await distillNow($)
-  expect(w.forks[0]).toContain('M1 [user] 第一條 延續行 A - 縮排子項\nM2 [project] 第二條｜做法：照做｜理由：因為｜根據：2026-01-01 abc｜發生過')
+  expect(w.completes[0]?.system).toContain('M1 [user] 第一條 延續行 A - 縮排子項\nM2 [project] 第二條｜做法：照做｜理由：因為｜根據：2026-01-01 abc｜發生過')
   const out = w.files.get(NOTES) ?? ''
   expect(out).toContain([
     '## 記憶',
@@ -416,7 +416,7 @@ test('記憶確認：confirm_memory 加一筆根據，封存的因此恢復帶�
   w.files.set(NOTES, TIERED_NOTES)
   ctl.distillReply = actionsReply({ op: 'confirm_memory', id: 'M3', evidence: '這次又查了一次位置' })
   await distillNow($)
-  expect(w.forks[0]).toContain('M3 [reference] 很久沒證實的位置｜根據：1969-11-01 abc｜很久以前（已封存：超過 30 天沒被證實）')
+  expect(w.completes[0]?.system).toContain('M3 [reference] 很久沒證實的位置｜根據：1969-11-01 abc｜很久以前（已封存：超過 30 天沒被證實）')
   const notes = w.files.get(NOTES) ?? ''
   expect(notes).toContain(['- [reference] 很久沒證實的位置', '  - 根據：1969-11-01 abc｜很久以前', '  - 根據：1970-01-01 S1｜這次又查了一次位置'].join('\n'))
   expect(lastOf(w).changes).toEqual(['記憶確認：[reference] 很久沒證實的位置'])

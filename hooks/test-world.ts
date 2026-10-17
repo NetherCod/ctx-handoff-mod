@@ -18,16 +18,17 @@ export const DISTILL_REPLY = actionsReply(
 
 // 會被測試改寫的世界狀態：ES module 的 let 匯出不能被匯入端重新指派，所以放進一個可變物件，每個 world() 開頭整個重設
 const fresh = () => ({
-  // 背景整理 fork 的回覆；個別測試可以換掉，onFork 可以模擬 fork 期間發生的事
+  // 背景整理 fork 的回覆；個別測試可以換掉，onComplete 可以模擬 fork 期間發生的事
   distillReply: DISTILL_REPLY,
-  onFork: undefined as (() => void | Promise<void>) | undefined,
+  onComplete: undefined as (() => void | Promise<void>) | undefined,
   // 整理請求回 aborted（引擎依 timeoutMs 放棄）
   completeAborts: false,
   takenCommands: new Set<string>(),
   registered: [] as string[],
   // 每個 fork 都會等它：用來讓 fork 停在半空中，測試並行與交接期間的行為
   forkGate: undefined as (() => Promise<void>) | undefined,
-  // 只擋整理 fork／只擋交接 fork
+  completeGate: undefined as (() => Promise<void>) | undefined,
+  // 分別擋整理與交接
   distillGate: undefined as (() => Promise<void>) | undefined,
   handoffGate: undefined as (() => Promise<void>) | undefined,
   // 寫入這個路徑時失敗（模擬磁碟錯誤）
@@ -146,23 +147,17 @@ export const world = (on: On, tokens: number, window = 1_000_000, store: Record<
   })
   on('model.fork', async (_$, e: { prompt: string }) => {
     forks.push(e.prompt)
-    const isDistill = e.prompt.includes('=== ACTIONS ===')
-    if (isDistill) await ctl.onFork?.()
     await ctl.forkGate?.()
-    if (isDistill) await ctl.distillGate?.()
-    else await ctl.handoffGate?.()
-    if (!isDistill && ctl.failHandoff) return { value: { isAnswered: false as const, reason: 'nothing-to-fork' as const } }
-    const text = isDistill ? ctl.distillReply : 'HANDOFF: 測試'
-    return { value: { isAnswered: true as const, text, usage: usage(tokens) } }
+    await ctl.handoffGate?.()
+    if (ctl.failHandoff) return { value: { isAnswered: false as const, reason: 'nothing-to-fork' as const } }
+    return { value: { isAnswered: true as const, text: 'HANDOFF: 測試', usage: usage(tokens) } }
   })
-  // 背景整理走 model.complete：記進同一個 forks 清單（系統提示＋訊息），測試照舊比對內容與次數
   on('model.complete', async (_$, e: { model: string; effort?: string; system?: string; prompt: string; timeoutMs?: number }) => {
     completes.push(e)
-    forks.push(`${e.system ?? ''}\n${e.prompt}`)
     // timeoutMs 由引擎計時；ctl.completeAborts 模擬到時回 aborted
     if (ctl.completeAborts) return { value: { isAnswered: false as const, reason: 'aborted' as const, usage: usage(0) } }
-    await ctl.onFork?.()
-    await ctl.forkGate?.()
+    await ctl.onComplete?.()
+    await ctl.completeGate?.()
     await ctl.distillGate?.()
     return { value: { isAnswered: true as const, text: ctl.distillReply, usage: usage(0) } }
   })

@@ -22,10 +22,10 @@ test('閒置刷新順便整理：寫入專案經驗檔、濾掉疑似金鑰、�
   await endTurn($)
   await w.clock.advance(55 * 60_000)
   // 刷新是只回 OK 的 fork，整理是另一個 complete 請求，附上這段對話
-  expect(w.forks.length).toBe(2)
-  expect(w.forks[0]).toBe('只回覆 OK')
-  expect(w.forks[1]).toContain('範圍：整段對話')
-  expect(w.forks[1]).toContain('【使用者】請幫我  整理\n這段對話')
+  expect(w.forks).toEqual(['只回覆 OK'])
+  expect(w.completes.length).toBe(1)
+  expect(w.completes[0]?.system).toContain('範圍：整段對話')
+  expect(w.completes[0]?.prompt).toContain('【使用者】請幫我  整理\n這段對話')
   expect(w.completes[0]).toMatchObject({ model: 'claude-sonnet-5-5', effort: 'low' })
   const notes = w.files.get(NOTES) ?? ''
   expect(notes).toContain('## 記憶\n- [project] 使用者決定交接門檻維持 600k')
@@ -36,7 +36,8 @@ test('閒置刷新順便整理：寫入專案經驗檔、濾掉疑似金鑰、�
   expect(status.text).toContain('新增記憶：[project] 使用者決定交接門檻維持 600k')
   // 第二次刷新：沒有新訊息，只回 OK
   await w.clock.advance(55 * 60_000)
-  expect(w.forks.slice(2)).toEqual(['只回覆 OK'])
+  expect(w.forks).toEqual(['只回覆 OK', '只回覆 OK'])
+  expect(w.completes.length).toBe(1)
   // 差異不用 session.append，而是跟著下一則送進對話的訊息
   await say($, '下一則')
   expect(w.contexts[1]?.[0]).toContain(NOTE_TAG)
@@ -47,8 +48,9 @@ test('交接前整理一次，再 /clear', async ($, on) => {
   const w = world(on, 650_000, 1_000_000, {}, [], 5)
   await stop($)
   await w.clock.advance(0)
-  expect(w.forks.length).toBe(2)
-  expect(w.forks.some(f => f.includes('=== ACTIONS ==='))).toBe(true)
+  expect(w.forks.length).toBe(1)
+  expect(w.completes.length).toBe(1)
+  expect(w.completes[0]?.system).toContain('=== ACTIONS ===')
   expect(w.commands).toEqual(['clear'])
   expect(w.files.get(NOTES) ?? '').toContain('600k')
 })
@@ -72,13 +74,13 @@ test('依編號套用新增／更新／刪除／確認，超出範圍的忽略�
     { role: 'assistant', text: '好的', toolUses: [{ tool: 'Bash', input: { command: 'ls' }, text: 'a.ts' }] },
   )
   await distillNow($)
-  expect(w.forks[0]).toContain('使用者說「上次最後一則訊息」')
+  expect(w.completes[0]?.system).toContain('使用者說「上次最後一則訊息」')
   // 只附上錨點之後的對話；工具呼叫留名稱、輸入與結果
-  expect(w.forks[0]).toContain('【助理】好的')
-  expect(w.forks[0]).toContain('〔工具 Bash〕{"command":"ls"} → a.ts')
-  expect(w.forks[0]).not.toContain('更早的訊息')
-  expect(w.forks[0]).toContain('M1 [feedback] 舊 A')
-  expect(w.forks[0]).toContain('R2 規則二｜出現 2 次｜做 Y')
+  expect(w.completes[0]?.prompt).toContain('【助理】好的')
+  expect(w.completes[0]?.prompt).toContain('〔工具 Bash〕{"command":"ls"} → a.ts')
+  expect(w.completes[0]?.prompt).not.toContain('更早的訊息')
+  expect(w.completes[0]?.system).toContain('M1 [feedback] 舊 A')
+  expect(w.completes[0]?.system).toContain('R2 規則二｜出現 2 次｜做 Y')
   const notes = w.files.get(NOTES) ?? ''
   // 根據由程式補日期與 session；原話可用 … 省略中間
   expect(notes).toContain([
@@ -114,27 +116,27 @@ test('沒有經驗檔：新對話開頭不帶入', async ($, on) => {
 test('整理期間檔案被手動修改：不套用、不排入，下次重新整理同一段', async ($, on) => {
   const w = world(on, 100_000, 1_000_000, {}, [], 5)
   w.files.set(NOTES, EXISTING)
-  ctl.onFork = () => { w.files.set(NOTES, `${EXISTING}\n- [user] 使用者剛手動加的\n`) }
+  ctl.onComplete = () => { w.files.set(NOTES, `${EXISTING}\n- [user] 使用者剛手動加的\n`) }
   const r = await distillNow($)
   expect(r.text).toContain('整理期間經驗檔被修改')
   expect(w.files.get(NOTES) ?? '').toContain('使用者剛手動加的')
   await say($, '下一則')
   expect(w.contexts[0]).toBeUndefined()
   // 沒有推進進度：下次還會整理
-  ctl.onFork = undefined
+  ctl.onComplete = undefined
   await distillNow($)
-  expect(w.forks.length).toBe(2)
+  expect(w.completes.length).toBe(2)
 })
 
 test('每 30 則訊息整理一次；不到 30 則不整理', async ($, on) => {
   const w = world(on, 100_000, 1_000_000, {}, [], 30)
   await endTurn($)
   await w.clock.advance(0)
-  expect(w.forks.length).toBe(1)
+  expect(w.completes.length).toBe(1)
   // 再結束一個回合：上次已整理到第 30 則，不再觸發
   await endTurn($)
   await w.clock.advance(0)
-  expect(w.forks.length).toBe(1)
+  expect(w.completes.length).toBe(1)
 })
 
 test('設定 distill_every：改成每 10 則就整理，狀態列倒數跟著它', async ($, on) => {
@@ -142,7 +144,7 @@ test('設定 distill_every：改成每 10 則就整理，狀態列倒數跟著�
   ctl.panelSettings = { distill_every: 10 }
   await endTurn($)
   await w.clock.advance(0)
-  expect(w.forks.length).toBe(1)
+  expect(w.completes.length).toBe(1)
   expect((await cmd($, '')).text).toContain('每 10 則')
 })
 
@@ -167,10 +169,10 @@ test('錨點：記下使用者最後一則訊息，下次整理從它之後開�
   await $.prompt.submit({ text: '請幫我  整理\n這段對話', origin: composer, wait: false })
   await $.prompt.submit({ text: '/handoff', origin: composer, wait: false })
   await distillNow($)
-  expect(w.forks[0]).toContain('範圍：整段對話')
+  expect(w.completes[0]?.system).toContain('範圍：整段對話')
   n = 9
   await distillNow($)
-  expect(w.forks[1]).toContain('使用者說「請幫我 整理 這段對話」')
+  expect(w.completes[1]?.system).toContain('使用者說「請幫我 整理 這段對話」')
 })
 
 // ---------- JSONL 動作與工作區經驗檔 ----------
@@ -262,7 +264,7 @@ test('整理提示：繁體中文指示、只有這個工作區的記憶與規�
   repo(w, ALPHA)
   await read($, `${ALPHA}/a.ts`)
   await distillNow($)
-  const p = w.forks[0] ?? ''
+  const p = w.completes[0]?.system ?? ''
   expect(p).toContain('用使用者在對話裡使用的語言撰寫（使用者寫中文就用繁體中文（台灣））；程式碼、指令、路徑、錯誤訊息與專有名詞維持原文')
   expect(p).toContain('不要用他、她等代名詞猜性別')
   expect(p).toContain('M2 [project] 舊 B')
@@ -330,7 +332,7 @@ for (const when of ['before', 'after']) {
     w.files.set(NOTES, EXISTING)
     const deny = () => { ctl.failRead = { path: NOTES, reason: 'EACCES: permission denied opening /tmp/ENOENT: notes' } }
     if (when === 'before') deny()
-    else ctl.onFork = deny
+    else ctl.onComplete = deny
     await distillNow($)
     expect(w.files.get(NOTES)).toBe(EXISTING)
     expect(w.writes).not.toContain(NOTES)
@@ -343,13 +345,13 @@ for (const when of ['before', 'after']) {
 test('經驗檔寫成後 store 失敗，同一片段重試不重複增加規則與流程次數', async ($, on) => {
   const w = world(on, 100_000, 1_000_000, {}, [], 5)
   w.files.set(NOTES, `${EXISTING}\n## 流程\n\n### 發版（1 次）\n- 時機：發版\n- 步驟：\n  1. 測試\n  2. 發布\n`)
-  ctl.onFork = () => { ctl.failStore = { key: 'tombstones:C--proj', remaining: 1 } }
+  ctl.onComplete = () => { ctl.failStore = { key: 'tombstones:C--proj', remaining: 1 } }
   ctl.distillReply = actionsReply({ op: 'confirm_rule', id: 'R1', evidence: '使用者又要求一次' }, { op: 'confirm_procedure', id: 'P1', evidence: '再次發版' })
   await distillNow($)
   expect(w.files.get(NOTES)).toContain('### 規則一（2 次）')
   expect(w.files.get(NOTES)).toContain('### 發版（2 次）')
   expect(w.get('distill:S1')).toBeUndefined()
-  ctl.onFork = undefined
+  ctl.onComplete = undefined
   ctl.distillReply = actionsReply({ op: 'confirm_rule', id: 'R1', evidence: '同一段使用者重申' }, { op: 'confirm_procedure', id: 'P1', evidence: '同一次再次執行發版' })
   await distillNow($)
   expect(w.files.get(NOTES)).toContain('### 規則一（2 次）')
@@ -363,10 +365,10 @@ test('部分寫入重試凍結原片段，新來的相同要求留給下一批',
   w.files.set(NOTES, EXISTING)
   await say($, '使用者再次要求做 X')
   ctl.distillReply = actionsReply({ op: 'confirm_rule', id: 'R1', evidence: '使用者再次要求做 X' }, { op: 'update_rule', id: 'R1', rule: '改做 X' })
-  ctl.onFork = () => { ctl.failStore = { key: 'tombstones:C--proj', remaining: 1 } }
+  ctl.onComplete = () => { ctl.failStore = { key: 'tombstones:C--proj', remaining: 1 } }
   await distillNow($)
   expect(w.files.get(NOTES)).toContain('### 規則一（2 次）')
-  ctl.onFork = undefined
+  ctl.onComplete = undefined
   turns = 6
   await say($, '下一批的新工作，使用者再次要求做 X')
   ctl.distillReply = actionsReply({ op: 'confirm_rule', id: 'R1', evidence: '換句話重述同一要求' })
@@ -434,9 +436,9 @@ test('新增規則與流程部分寫入後改輸出confirm，不把同一事件�
     { op: 'add_rule', name: '先測試', rule: '先測試', applies: '改程式', not_applies: '改文件', evidence: '本次要求' },
     { op: 'add_procedure', name: '驗收', when: '改完程式', steps: ['測試', '檢查'], evidence: '本次流程' },
   )
-  ctl.onFork = () => { ctl.failStore = { key: 'tombstones:C--proj', remaining: 1 } }
+  ctl.onComplete = () => { ctl.failStore = { key: 'tombstones:C--proj', remaining: 1 } }
   await distillNow($)
-  ctl.onFork = undefined
+  ctl.onComplete = undefined
   ctl.distillReply = actionsReply({ op: 'confirm_rule', id: 'R1', evidence: '改寫同一要求' }, { op: 'confirm_procedure', id: 'P1', evidence: '改寫同一流程' })
   await distillNow($)
   expect(w.files.get(NOTES)).toContain('### 先測試（1 次）')
@@ -473,8 +475,8 @@ test('墓碑：直接改檔刪掉的記憶，整理加不回來；使用者又�
   n = 9
   ctl.distillReply = actionsReply({ op: 'add_memory', type: 'project', title: '舊 B', evidence: '又談到了' })
   await distillNow($)
-  expect(w.forks[1]).toContain('使用者刪掉的記憶')
-  expect(w.forks[1]).toContain('- 舊 B')
+  expect(w.completes[1]?.system).toContain('使用者刪掉的記憶')
+  expect(w.completes[1]?.system).toContain('- 舊 B')
   expect(w.files.get(NOTES) ?? '').not.toContain('舊 B')
   expect(lastOf(w).rejected.samples.join('\n')).toContain('使用者刪過「舊 B」')
   n = 13
@@ -486,7 +488,7 @@ test('墓碑：直接改檔刪掉的記憶，整理加不回來；使用者又�
   n = 17
   ctl.distillReply = actionsReply()
   await distillNow($)
-  expect(w.forks[3]).not.toContain('使用者刪掉的記憶')
+  expect(w.completes[3]?.system).not.toContain('使用者刪掉的記憶')
 })
 
 test('墓碑：第一次整理沒有比對對象，不記墓碑；整理自己刪的（被推翻、合併）不算使用者刪的', async ($, on) => {
@@ -495,9 +497,9 @@ test('墓碑：第一次整理沒有比對對象，不記墓碑；整理自己�
   w.files.set(NOTES, EXISTING)
   ctl.distillReply = actionsReply({ op: 'delete_memory', id: 'M2', reason: '被推翻' })
   await distillNow($)
-  expect(w.forks[0]).not.toContain('使用者刪掉的記憶')
+  expect(w.completes[0]?.system).not.toContain('使用者刪掉的記憶')
   n = 9
   ctl.distillReply = actionsReply()
   await distillNow($)
-  expect(w.forks[1]).not.toContain('使用者刪掉的記憶')
+  expect(w.completes[1]?.system).not.toContain('使用者刪掉的記憶')
 })

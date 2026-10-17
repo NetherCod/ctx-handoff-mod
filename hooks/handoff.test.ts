@@ -25,7 +25,8 @@ test('自動交接關閉（預設）：到門檻不交接，每 30 則照樣整�
   expect(w.commands).toEqual([])
   await endTurn($)
   await w.clock.advance(0)
-  expect(w.forks.length).toBe(1)
+  expect(w.forks).toEqual([])
+  expect(w.completes.length).toBe(1)
   expect(w.commands).toEqual([])
 })
 
@@ -315,7 +316,7 @@ test('暫停離席取消timer但手動整理仍可用，恢復從現在重排', 
   expect(w.completes.length).toBe(1)
   await cmd($, 'away resume')
   await w.clock.advance(54 * 60_000)
-  expect(w.forks.length).toBe(1)
+  expect(w.forks).toEqual([])
   await w.clock.advance(60_000)
   expect(w.forks.at(-1)).toBe('只回覆 OK')
 })
@@ -374,7 +375,7 @@ test('筆記與交接並行時兩個狀態槽互不覆蓋', async ($, on) => {
 test('S1 handoff fork 失敗：攔下的訊息在舊對話重新送出', async ($, on) => {
   const w = world(on, 650_000, 1_000_000, {}, [], 5)
   ctl.failHandoff = true
-  ctl.onFork = async () => { await say($, '中途訊息') }
+  ctl.onComplete = async () => { await say($, '中途訊息') }
   await stop($)
   await w.clock.settle()
   expect(w.commands).toEqual([])
@@ -386,10 +387,11 @@ test('S1 交接 fork 與交接前整理同時發出', async ($, on) => {
   let release: () => void = () => {}
   const gate = new Promise<void>(r => { release = r })
   ctl.forkGate = () => gate
+  ctl.completeGate = () => gate
   await stop($)
   await w.clock.settle()
-  // 兩個 fork 都還沒回來就都已經發出
-  expect(w.forks.length).toBe(2)
+  expect(w.forks.length).toBe(1)
+  expect(w.completes.length).toBe(1)
   expect(w.commands).toEqual([])
   release()
   await w.clock.settle()
@@ -572,7 +574,8 @@ for (const changed of ['prompt', 'session', 'pause']) {
     ctl.distillGate = undefined
     release()
     await w.clock.settle()
-    expect(w.forks.length).toBe(2)
+    expect(w.forks).toEqual(['只回覆 OK'])
+    expect(w.completes.length).toBe(1)
     expect((await cmd($, '')).text).toContain('0/3')
     w.put('distill', false)
     for (let i = 0; i < 3; i++) {

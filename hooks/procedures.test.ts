@@ -85,7 +85,7 @@ test('流程：整理新增、確認、更新、刪除，格式與次數、根�
   )
   await distillNow($)
   // 整理提示列出現有流程
-  expect(w.forks.at(-1) ?? '').toContain('P1 發版｜出現 1 次｜時機：要發新版本時｜步驟：改 plugin.json 的版本號 → 把 Unreleased 移到新版本 → 打 tag → 建立 GitHub release')
+  expect((w.completes.at(-1)?.system ?? '')).toContain('P1 發版｜出現 1 次｜時機：要發新版本時｜步驟：改 plugin.json 的版本號 → 把 Unreleased 移到新版本 → 打 tag → 建立 GitHub release')
   const after = w.files.get(NOTES) ?? ''
   expect(after).toContain([
     '### 發版（2 次）',
@@ -145,7 +145,7 @@ test('流程：已放進專案的在整理提示標出 repo 才是正本；上�
   w.files.set(NOTES, withProcedure(3, ['- 專案：已在 .claude/skills/release/SKILL.md']))
   ctl.distillReply = actionsReply({ op: 'confirm_procedure', id: 'R1', evidence: 'x' }, { op: 'confirm_procedure', id: 'P3', evidence: 'x' })
   await distillNow($)
-  expect(w.forks[0] ?? '').toContain('｜已在 .claude/skills/release/SKILL.md（repo 裡的才是正本，不要 update_procedure）')
+  expect(w.completes[0]?.system ?? '').toContain('｜已在 .claude/skills/release/SKILL.md（repo 裡的才是正本，不要 update_procedure）')
   expect(lastOf(w).rejected.samples).toEqual(['id 不是 P#：{"op":"confirm_procedure","id":"R1","evidence":"x"}', '沒有編號 P3：{"op":"confirm_procedure","id":"P3","evidence":"x"}'])
 })
 
