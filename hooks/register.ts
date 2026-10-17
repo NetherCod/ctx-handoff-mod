@@ -894,7 +894,13 @@ async function loadPanelData($: EngineInterface): Promise<PanelData> {
   const d = (await $.store.get(`distill:last:${await projectKey($)}`)) as DistillLast | undefined
   const data = panelSnapshot(file, notes, guards, d, localStamp(await $.clock.now()).slice(0, 10), await settingRows($))
   const background = await backgroundSnapshot($)
-  return { ...data, background: { paused: background.paused, lines: [...background.lines, ...background.history] } }
+  // 頂部只留離席狀態、正在跑的任務、未送達交接與本對話背景用量；檔案路徑已在 footer，歷史紀錄放進「最近整理」分頁
+  const active = [
+    background.lines[1],
+    ...background.lines.slice(2, 4).filter(l => !l.endsWith(t().background.idle)),
+    ...background.lines.slice(4),
+  ].filter((l): l is string => Boolean(l))
+  return { ...data, background: { paused: background.paused, lines: active, details: background.history } }
 }
 
 // 設定分頁的列：SETTINGS 的值加上兩個用指令也能切的開關（保持快取、專案筆記，存在 store 的 refresh／distill），依主題排
@@ -1145,7 +1151,7 @@ function panelActions($: EngineInterface): PanelActions {
     suggest: () => run(async () => {
       if ((await read($, panelUi)).suggesting) return undefined
       await setUi(u => ({ ...u, suggesting: true }))
-      try { return (await suggestGuards($)).text.split('\n')[0]?.replace(``, '') }
+      try { return (await suggestGuards($)).text.split('\n')[0] }
       finally { await setUi(u => ({ ...u, suggesting: false })) }
     }),
     tab: tab => setUi(({ confirming: _c, note: _n, ...u }) => ({ ...u, tab })),

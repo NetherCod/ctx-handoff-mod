@@ -54,7 +54,7 @@ export const rt = {
   handed: new Set<string>(),
 }
 
-// 重設程序內狀態（模組重新載入或測試重跑時）；distilling、distillFailed、presentStartedAt 沿用原本不重設的行為
+// 重設程序內狀態（模組重新載入或測試重跑時）
 export function resetRuntime() {
   rt.distillTask = undefined
   rt.handoffTask = undefined
@@ -65,6 +65,7 @@ export function resetRuntime() {
   rt.activity = 0
   rt.presenting = false
   rt.held = []
+  rt.presentStartedAt = undefined
   rt.pendingNotes.clear()
   rt.myPending = undefined
   rt.pendingToasted = false
@@ -74,6 +75,10 @@ export function resetRuntime() {
   rt.deferral = undefined
   rt.deferToasted = false
   rt.seenKnown.clear()
+  rt.distilling = false
+  rt.distillDone = undefined
+  rt.statQueue = Promise.resolve()
+  rt.distillFailed = false
   rt.guardsKeyCache = undefined
   rt.langReady = undefined
   rt.streaks.clear()

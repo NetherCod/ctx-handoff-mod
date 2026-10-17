@@ -112,7 +112,8 @@ test('重啟後可明確指定來源session重送未送達交接，成功後才�
 
 test('明確來源也不能重送其他工作區的pending', async ($, on) => {
   const w = world(on, 100_000, 1_000_000, { 'pendingSubmit:OTHER': { text: '其他工作區內容', project: 'D--elsewhere' } })
-  await cmd($, 'resend OTHER')
+  const r = await cmd($, 'resend OTHER')
+  expect(r.text).toContain('沒有可以重送')
   await w.clock.settle()
   expect(w.submits).toEqual([])
   expect(w.get('pendingSubmit:OTHER')).toBeDefined()

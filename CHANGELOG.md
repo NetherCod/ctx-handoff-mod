@@ -9,6 +9,7 @@ All notable changes to ctx-handoff. The format follows [Keep a Changelog](https:
 ### Added
 
 - Session-only away pause and resume controls in the command and panel, concurrent background activity, and reported session token totals collected since this update. Unknown usage is marked, not estimated as zero or dollars.
+- Deleting a guard in the panel now asks for confirmation, the Rules tab label includes procedure counts, and the panel header stays compact.
 
 ### Fixed
 

@@ -304,7 +304,7 @@ for (const reply of ['', '沒有變動', '=== ACTIONS ===', actionsReply('{broke
     const result = await distillNow($)
     expect(result.text).not.toContain('整理完成')
     expect(w.get('distill:S1')).toBeUndefined()
-    expect(w.get('distill:error:C--proj')).toBeDefined()
+    expect(w.get('distill:error:C--proj')).toMatchObject({ reason: '整理輸出沒有可採用的動作；已保留這段對話供下次重試' })
     expect(w.get('stats:C--proj')).toMatchObject({ counts: { 'distill.fail': 1 } })
     expect(w.files.has(NOTES)).toBe(false)
     ctl.distillReply = actionsReply()
@@ -314,16 +314,36 @@ for (const reply of ['', '沒有變動', '=== ACTIONS ===', actionsReply('{broke
   })
 }
 
-test('墓碑不能靠已整理過的使用者原話復活', async ($, on) => {
+test('墓碑不能靠已整理過的使用者原話復活；壓縮後找不到舊錨點時也不能靠全對話原話復活', async ($, on) => {
+  let turns = 6
   const w = world(on, 100_000, 1_000_000, {
     'distill:S1': { turn: 3, anchor: '之前要求保留舊 B' },
     'tombstones:C--proj': { known: [], dead: [{ title: '舊 B', at: 0 }] },
-  }, [], 6)
+  }, [], () => turns)
   w.rows.push({ role: 'user', text: '之前要求保留舊 B', toolUses: [] }, { role: 'user', text: '現在改做另一件事', toolUses: [] })
-  ctl.distillReply = actionsReply({ op: 'add_memory', type: 'project', title: '舊 B', evidence: '又談到了', quote: '之前要求保留舊 B' })
+  ctl.distillReply = actionsReply(
+    { op: 'add_memory', type: 'project', title: '舊 B', evidence: '又談到了', quote: '之前要求保留舊 B' },
+    { op: 'add_memory', type: 'project', title: '本批新事實', evidence: '新內容' },
+  )
   await distillNow($)
   expect(w.files.get(NOTES) ?? '').not.toContain('舊 B')
   expect(lastOf(w).rejected.samples.join('\n')).toContain('使用者刪過「舊 B」')
+  // 送出一則訊息讓 last:S1 設好錨點並整理推進，接著模擬對話被壓縮重組（找不到該錨點且最後一則改變）
+  await say($, '壓縮前最後一則訊息')
+  turns = 8
+  ctl.distillReply = actionsReply()
+  await distillNow($)
+  w.rows.length = 0
+  w.rows.push({ role: 'user', text: '壓縮摘要裡保留了舊 B 的字樣', toolUses: [] })
+  turns = 11
+  ctl.distillReply = actionsReply(
+    { op: 'add_memory', type: 'project', title: '舊 B', evidence: '壓縮後提到', quote: '壓縮摘要裡保留了舊 B 的字樣' },
+    { op: 'add_memory', type: 'project', title: '壓縮後另一件新事實', evidence: '新內容' },
+  )
+  await distillNow($)
+  expect(w.files.get(NOTES) ?? '').not.toContain('舊 B')
+  expect(w.files.get(NOTES) ?? '').toContain('壓縮後另一件新事實')
+  expect(w.get('distill:S1')).toMatchObject({ turn: 11 })
 })
 
 for (const when of ['before', 'after']) {
@@ -337,7 +357,7 @@ for (const when of ['before', 'after']) {
     expect(w.files.get(NOTES)).toBe(EXISTING)
     expect(w.writes).not.toContain(NOTES)
     expect(w.get('distill:S1')).toBeUndefined()
-    expect(w.get('distill:error:C--proj')).toBeDefined()
+    expect((w.get('distill:error:C--proj') as { reason: string }).reason).toContain('EACCES')
     expect(w.completes.length).toBe(when === 'before' ? 0 : 1)
   })
 }
@@ -400,13 +420,17 @@ test('完成後重試終點清理失敗不重播或回退checkpoint', async ($, 
 })
 
 for (const action of [
+  { op: 'add_memory', type: 'project', title: '舊 B', evidence: '重試同一條事實' },
   { op: 'approve_guard', id: 'G1', quote: '同意採用守門' },
   { op: 'in_project', id: 'R1', where: 'CLAUDE.md' },
+  { op: 'in_project', id: 'G1', where: 'C:/proj/AGENTS.md' },
 ]) {
-  test(`部分成功重試已達成的狀態是合法no-op：${action.op}`, async ($, on) => {
-    const w = world(on, 100_000, 1_000_000, { 'guards:C--proj': [{ id: 1, state: 'proposed', rule: '測試守門', tool: 'Bash', match: 'push', message: '提醒', mode: 'remind', at: 0 }] }, [], 5)
+  test(`部分成功重試已達成的狀態是合法no-op：${action.op}:${'id' in action ? action.id : action.title}`, async ($, on) => {
+    const guardState = action.op === 'in_project' ? 'on' : 'proposed'
+    const w = world(on, 100_000, 1_000_000, { 'guards:C--proj': [{ id: 1, state: guardState, rule: '測試守門', tool: 'Bash', match: 'push', message: '提醒', mode: 'remind', at: 0 }] }, [], 5)
     w.files.set(NOTES, EXISTING.replace('規則一（1 次）', '規則一（3 次）'))
     w.files.set('C:/proj/CLAUDE.md', '規則已在此')
+    w.files.set('C:/proj/AGENTS.md', '守門已在此')
     await say($, '同意採用守門')
     ctl.distillReply = actionsReply({ op: 'add_memory', type: 'project', title: '本次事實', evidence: '測試' }, action)
     ctl.failStore = { key: 'distill:last:C--proj', remaining: 1 }
@@ -418,6 +442,17 @@ for (const action of [
     expect(lastOf(w).changes).toEqual([])
   })
 }
+
+test('只輸出缺檔的 in_project 時整批視為無法使用，不推進進度', async ($, on) => {
+  const w = world(on, 100_000, 1_000_000, {}, [], 5)
+  w.files.set(NOTES, EXISTING.replace('規則一（1 次）', '規則一（3 次）'))
+  ctl.distillReply = actionsReply({ op: 'in_project', id: 'R1', where: 'MISSING.md' })
+  const r = await distillNow($)
+  expect(r.text).not.toContain('整理完成')
+  expect(w.get('distill:S1')).toBeUndefined()
+  expect(lastOf(w).rejected.count).toBe(1)
+  expect(w.get('distill:error:C--proj')).toMatchObject({ reason: '整理輸出沒有可採用的動作；已保留這段對話供下次重試' })
+})
 
 test('原片段終點已消失時停止重試，不猜位置或推進', async ($, on) => {
   const w = world(on, 100_000, 1_000_000, { 'distill:retry:S1': { fromTurn: 0, turn: 5, rowCount: 1, last: { role: 'user', text: '原始訊息' } } }, [], 6)

@@ -1,16 +1,20 @@
 // 面板：輸入框上方的分頁、守門核准、刪除記憶與規則
 import { expect, test } from 'claude-code/testing'
-import { cmd, ctl, NOTES_PATH, pushGuard, BAND_MOUNT, openPanel, PANEL_NOTES, world } from './test-world'
+import { cmd, ctl, endTurn, NOTES_PATH, pushGuard, BAND_MOUNT, openPanel, PANEL_NOTES, world } from './test-world'
 
 test('面板與指令共用本對話離席控制，列出工作區與背景用量未知狀態', async ($, on) => {
   const w = world(on, 100_000)
+  await endTurn($)
   const ui = await openPanel($)
   expect(await ui.find({ type: 'Text', text: /本對話背景用量尚未收集/ })).toBeDefined()
   await ui.press({ key: 'away-toggle' })
   expect((await cmd($, '')).text).toContain('離席工作已暫停')
+  await w.clock.advance(55 * 60_000)
   expect(w.forks).toEqual([])
   await cmd($, 'away resume')
   expect(await ui.find({ type: 'Button', text: '暫停本對話離席工作' })).toBeDefined()
+  await w.clock.advance(55 * 60_000)
+  expect(w.forks).toEqual(['只回覆 OK'])
   await ui.unmount()
 })
 
@@ -44,7 +48,7 @@ test('面板：/handoff panel 在輸入框上方開關；問卷佔著時讓出�
   expect((await cmd($, 'panel')).text).toContain('面板已關閉')
 })
 
-test('面板：列出守門與記憶，按核准後守門生效', async ($, on) => {
+test('面板：列出守門與記憶，按核准後守門生效；刪除守門要按兩次確認', async ($, on) => {
   const w = world(on, 1000, 1_000_000, { 'guards:C--proj': [{ ...pushGuard('proposed'), replay: { hits: 1, calls: 4 } }] })
   w.files.set(NOTES_PATH, PANEL_NOTES)
   const ui = await openPanel($)
@@ -56,6 +60,17 @@ test('面板：列出守門與記憶，按核准後守門生效', async ($, on) 
   expect(await ui.find({ type: 'Text', text: /守門 #1 已核准/ })).toBeDefined()
   const blocked = await $.tool.call({ tool: 'Bash', command: 'git push' })
   expect(blocked.deny).toContain('守門 #1')
+  await ui.press({ key: 'ask:g:1' })
+  await w.clock.advance(0)
+  expect((w.get('guards:C--proj') as unknown[]).length).toBe(1)
+  await ui.press({ key: 'no:g:1' })
+  await w.clock.advance(0)
+  expect((w.get('guards:C--proj') as unknown[]).length).toBe(1)
+  await ui.press({ key: 'ask:g:1' })
+  await w.clock.advance(0)
+  await ui.press({ key: 'drop1' })
+  await w.clock.advance(0)
+  expect(w.get('guards:C--proj')).toEqual([])
   await ui.press({ key: 'tab:memory' })
   expect(await ui.find({ type: 'Text', text: /使用者要求每次都先跑測試/ })).toBeDefined()
 })

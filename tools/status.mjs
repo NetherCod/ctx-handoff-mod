@@ -33,7 +33,7 @@ if (storeFile) {
 
   // 累計統計（docs/north-star.md 的量測用）：次數、最近的失敗與守門命中
   console.log('\n## 累計統計（store 的 stats:）')
-  const stats = Object.keys(s).filter(k => k.startsWith('stats:')).sort()
+  const stats = Object.keys(s).filter(k => k.startsWith('stats:') && !k.startsWith('stats:session:')).sort()
   if (stats.length === 0) console.log('還沒有統計')
   for (const k of stats) {
     const v = s[k]
@@ -41,6 +41,10 @@ if (storeFile) {
     console.log(`${k.slice(6)}（${local(v.since)} 起）：${counts.join('、') || '無'}`)
     for (const f of (v.failures ?? []).slice(-3)) console.log(`  失敗 ${local(f.at)} ${f.what}：${f.detail.slice(0, 120)}`)
     for (const h of (v.hits ?? []).slice(-3)) console.log(`  守門 ${local(h.at)} ${h.detail.slice(0, 120)}`)
+  }
+  const sessStats = Object.keys(s).filter(k => k.startsWith('stats:session:')).sort()
+  if (sessStats.length > 0) {
+    console.log(`本機留存對話背景用量紀錄：${sessStats.length} 個 session`)
   }
 }
 

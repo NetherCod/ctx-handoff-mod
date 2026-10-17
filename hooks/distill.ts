@@ -419,7 +419,7 @@ export function prepareDistillActions(input: {
     }
   }
   const parsed = parseActions(input.text, input.notes, input.userText, [...input.candidates, ...completed.keys()], [...input.drafts, ...answered.keys()])
-  return { ...parsed, completed, answered }
+  return { ...parsed, completed, answered, retry: input.retry }
 }
 
 export function reconcileDistillActions(input: {
@@ -432,7 +432,7 @@ export function reconcileDistillActions(input: {
   sid: string
   source: string
 }) {
-  const { completed, answered, rejected } = input.prepared
+  const { completed, answered, rejected, retry } = input.prepared
   let noops = 0
   const actions = input.actions.filter(a => {
     if ((a.op === 'approve_guard' || a.op === 'decline_guard') && answered.has(a.id)) {
@@ -445,7 +445,9 @@ export function reconcileDistillActions(input: {
       else addRejected(rejected, t().reject.noId(a.id), JSON.stringify(a))
       return false
     }
-    if (a.op !== 'add_memory' || !isBuried(input.tombstones, a.title, a.quote !== undefined && isQuoted(a.quote, input.currentUserText))) return true
+    if (a.op !== 'add_memory') return true
+    if (retry && input.notes.memory.some(m => m.title === a.title)) { noops += 1; return false }
+    if (!isBuried(input.tombstones, a.title, a.quote !== undefined && isQuoted(a.quote, input.currentUserText))) return true
     addRejected(rejected, t().reject.buried(a.title), JSON.stringify(a))
     return false
   })

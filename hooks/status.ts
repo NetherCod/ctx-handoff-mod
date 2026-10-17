@@ -34,6 +34,7 @@ export function statusText(s: StatusInput) {
     ...(rt.myPending ? [m.cmd.undelivered] : []),
     ...(rt.deferral ? [m.cmd.deferred(rt.deferral)] : []),
     ...(rt.snapshot ? [m.cmd.background(rt.snapshot.tasks, rt.snapshot.oneShot, rt.snapshot.recurring)] : []),
+    '',
     s.distill,
     s.guards,
     ...(s.progress ? [s.progress] : []),

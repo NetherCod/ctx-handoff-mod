@@ -27,10 +27,15 @@ if (cmd === 'new') {
   if (!existsSync(path)) { console.error(`沒有這個 worktree：${path}`); process.exit(1) }
   const dirty = git(path, 'status', '--porcelain').split('\n').filter(l => l && !l.includes('.claude-plugin/types'))
   if (dirty.length) { console.error(`worktree 還有沒 commit 的變更：\n${dirty.join('\n')}`); process.exit(1) }
-  const check = spawnSync(process.execPath, [join(path, 'tools', 'check.mjs'), path], { stdio: 'inherit' })
-  if (check.status !== 0) { console.error('檢查沒過，不合併'); process.exit(1) }
   const mainDirty = git(main, 'status', '--porcelain')
   if (mainDirty) { console.error(`主資料夾有未提交的變更，先處理：\n${mainDirty}`); process.exit(1) }
+  const mainHead = git(main, 'rev-parse', 'HEAD')
+  if (git(path, 'merge-base', mainHead, branch) !== mainHead) {
+    console.log('主分支已前進，先在 worktree 自動 rebase…')
+    git(path, 'rebase', mainHead)
+  }
+  const check = spawnSync(process.execPath, [join(path, 'tools', 'check.mjs'), path], { stdio: 'inherit' })
+  if (check.status !== 0) { console.error('檢查沒過，不合併'); process.exit(1) }
   git(main, 'merge', '--ff-only', branch)
   git(main, 'worktree', 'remove', '--force', path)
   git(main, 'branch', '-d', branch)

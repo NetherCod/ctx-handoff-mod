@@ -13,7 +13,7 @@ export type PanelGuard = {
 
 // 面板要顯示的資料快照：開面板、按動作、整理寫檔、指令改守門、回合結束時重算；畫面只讀這份，不讀檔
 export type PanelData = {
-  background?: { paused: boolean; lines: string[] }
+  background?: { paused: boolean; lines: string[]; details?: string[] }
   file: string
   guards: PanelGuard[]
   candidates: number

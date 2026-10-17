@@ -167,7 +167,7 @@ const zh = {
 
   // session 啟動
   start: {
-    description: 'ctx-handoff: 狀態；now／dry／distill／resume／continue／resend／refresh on|off／distill on|off',
+    description: 'ctx-handoff: 狀態；panel／now／dry／distill／resume／continue／resend／away／guard／refresh',
     taken: (err: string) => `/handoff 已被佔用（${err}），改用 /ctx-handoff`,
     registerFailed: (err: string) => `指令註冊失敗：${err}`,
     resumeFailed: (err: string) => `接回閒置計時失敗：${err}`,
@@ -367,7 +367,7 @@ const zh = {
     buttonsCells: 28,
     tabGuard: (n: number) => `守門 ${n}`,
     tabMemory: (n: number) => `記憶 ${n}`,
-    tabRules: (n: number) => `規則 ${n}`,
+    tabRules: (r: number, p = 0) => (p > 0 ? `規則 ${r}／流程 ${p}` : `規則 ${r}`),
     tabDistill: '最近整理',
     tabSettings: '設定',
     settingsHint: '面板改的值優先於 settings.json，所有工作區共用；按「展開」看說明',
@@ -568,7 +568,7 @@ const en: Messages = {
   },
 
   start: {
-    description: 'ctx-handoff: status; now / dry / distill / resume / continue / resend / refresh on|off / distill on|off',
+    description: 'ctx-handoff: status; panel / now / dry / distill / resume / continue / resend / away / guard / refresh',
     taken: err => `/handoff is already taken (${err}), using /ctx-handoff instead`,
     registerFailed: err => `could not register the command: ${err}`,
     resumeFailed: err => `could not restore the idle timer: ${err}`,
@@ -758,7 +758,7 @@ const en: Messages = {
     buttonsCells: 32,
     tabGuard: n => `Guards ${n}`,
     tabMemory: n => `Memory ${n}`,
-    tabRules: n => `Rules ${n}`,
+    tabRules: (r, p = 0) => (p > 0 ? `Rules ${r} / Proc ${p}` : `Rules ${r}`),
     tabDistill: 'Last update',
     tabSettings: 'Settings',
     settingsHint: 'Values set here win over settings.json and apply to every workspace. Press More for details',

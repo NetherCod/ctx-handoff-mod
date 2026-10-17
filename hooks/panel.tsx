@@ -82,11 +82,11 @@ export function panelTree(ui: Elements, v: PanelView, act: PanelActions) {
   const badge = (label: string, color: string) => <Text color={color} bold>{label}</Text>
   const empty = (text: string) => <Text dimColor>{text}</Text>
 
-  // 熱鍵 1–4：面板拿到鍵盤（ctrl+x tab 或點一下）時按數字切分頁
+  // 熱鍵 1–5：面板拿到鍵盤（ctrl+x tab 或點一下）時按數字切分頁
   const tabs: { id: PanelTab; label: string }[] = [
     { id: 'guard', label: m.tabGuard(v.guards.length) },
     { id: 'memory', label: m.tabMemory(v.memoryTotal) },
-    { id: 'rules', label: m.tabRules(v.rules.length) },
+    { id: 'rules', label: m.tabRules(v.rules.length, v.procedures.length) },
     { id: 'distill', label: m.tabDistill },
     { id: 'settings', label: m.tabSettings },
   ]
@@ -110,7 +110,12 @@ export function panelTree(ui: Elements, v: PanelView, act: PanelActions) {
               {g.state === 'on'
                 ? <Button key={`off${g.id}`} label={m.off} onPress={() => act.guard(g.id, 'off')} />
                 : <Button key={`on${g.id}`} label={m.approve} variant="primary" onPress={() => act.guard(g.id, 'on')} />}
-              <Button key={`drop${g.id}`} label={m.del} dimColor onPress={() => act.guard(g.id, 'drop')} />
+              {v.confirming === `g:${g.id}`
+                ? [
+                    <Button key={`drop${g.id}`} label={m.confirmDel} variant="primary" onPress={() => act.guard(g.id, 'drop')} />,
+                    <Button key={`no:g:${g.id}`} label={m.cancel} onPress={() => act.ask(undefined)} />,
+                  ]
+                : <Button key={`ask:g:${g.id}`} label={m.del} dimColor onPress={() => act.ask(`g:${g.id}`)} />}
               {toggle(`g${g.id}`)}
             </Box>
             <Box paddingLeft={2} flexDirection="column">
@@ -220,20 +225,31 @@ export function panelTree(ui: Elements, v: PanelView, act: PanelActions) {
     </Box>
   )
 
-  const distillTab = v.lastDistill
-    ? (
-      <Box flexDirection="column">
-        <Box>
-          <Box flexGrow={1}>
-            <Text dimColor>{m.distillLine(v.lastDistill.at, v.lastDistill.why, v.lastDistill.changes.length)}</Text>
+  const distillTab = (
+    <Box flexDirection="column">
+      {v.lastDistill
+        ? (
+          <Box flexDirection="column">
+            <Box>
+              <Box flexGrow={1}>
+                <Text dimColor>{m.distillLine(v.lastDistill.at, v.lastDistill.why, v.lastDistill.changes.length)}</Text>
+              </Box>
+              {v.lastDistill.changes.length ? toggle('changes') : null}
+            </Box>
+            {v.lastDistill.changes.map((c, i) =>
+              <Text key={`c${i}`}>{t().bullet}{isOpen('changes') ? oneLine(c) : fit(c, inner - 2)}</Text>)}
           </Box>
-          {v.lastDistill.changes.length ? toggle('changes') : null}
-        </Box>
-        {v.lastDistill.changes.map((c, i) =>
-          <Text key={`c${i}`}>{t().bullet}{isOpen('changes') ? oneLine(c) : fit(c, inner - 2)}</Text>)}
-      </Box>
-    )
-    : empty(m.noDistill)
+        )
+        : empty(m.noDistill)}
+      {v.background?.details?.length
+        ? (
+          <Box flexDirection="column" marginTop={1}>
+            {v.background.details.map((line, i) => <Text key={`detail:${i}`} dimColor>{fit(line, inner)}</Text>)}
+          </Box>
+        )
+        : null}
+    </Box>
+  )
 
   // 設定：名稱、值（auto 附解析結果）、來源；數字用 −／＋，開關與選項按一下換下一個；面板改過的可以還原
   const settingRow = (s: PanelView['settings'][number]) => {
@@ -282,8 +298,13 @@ export function panelTree(ui: Elements, v: PanelView, act: PanelActions) {
         <Button key="close" label={m.close} role="dismiss" dimColor onPress={act.close} />
       </Box>
       {v.background ? <Box flexDirection="column" marginBottom={1}>
-        <Button key="away-toggle" label={v.background.paused ? t().background.resume : t().background.pause} onPress={() => act.away(!v.background?.paused)} />
-        {v.background.lines.map((line, i) => <Text key={`background:${i}`} dimColor>{fit(line, inner)}</Text>)}
+        <Box>
+          <Box flexGrow={1}>
+            <Text dimColor>{fit(v.background.lines[0] ?? '', inner - 20)}</Text>
+          </Box>
+          <Button key="away-toggle" label={v.background.paused ? t().background.resume : t().background.pause} onPress={() => act.away(!v.background?.paused)} />
+        </Box>
+        {v.background.lines.slice(1).map((line, i) => <Text key={`background:${i}`} dimColor>{fit(line, inner)}</Text>)}
       </Box> : null}
       <Box marginBottom={1}>
         {tabs.map((t, i) => (
