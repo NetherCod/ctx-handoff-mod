@@ -32,6 +32,7 @@ const fresh = () => ({
   handoffGate: undefined as (() => Promise<void>) | undefined,
   // 寫入這個路徑時失敗（模擬磁碟錯誤）
   failWrite: undefined as string | undefined,
+  failRead: undefined as { path: string; reason: string } | undefined,
   // $.session.repo()：依目前工作目錄回答（會跟著 cd 變）
   curRepo: null as { root: string; remote: string | null; internal: boolean; name: string } | null,
   // 交接 fork（不是整理）回傳失敗
@@ -120,7 +121,8 @@ export const world = (on: On, tokens: number, window = 1_000_000, store: Record<
   const reads: string[] = []
   on('fs.read', (_$, e: { path: string }) => {
     reads.push(norm(e.path))
-    return files.has(norm(e.path)) ? { value: files.get(norm(e.path)) ?? '' } : { deny: 'missing' }
+    if (ctl.failRead?.path === norm(e.path)) return { deny: ctl.failRead.reason }
+    return files.has(norm(e.path)) ? { value: files.get(norm(e.path)) ?? '' } : { deny: 'ENOENT' }
   })
   const writes: string[] = []
   on('fs.write', (_$, e: { path: string; text: string }) => {

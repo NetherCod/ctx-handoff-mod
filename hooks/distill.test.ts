@@ -294,6 +294,51 @@ test('沒有 ACTIONS 標記的輸出：不套用，記一行丟棄；空的 ACTI
   expect(lastOf(w).rejected.count).toBe(0)
 })
 
+for (const reply of ['', '沒有變動', '=== ACTIONS ===', actionsReply('{broken'), actionsReply({ op: 'unknown' })]) {
+  test(`無法使用的整理輸出不消耗這段對話：${reply.slice(0, 30)}`, async ($, on) => {
+    const w = world(on, 100_000, 1_000_000, {}, [], 5)
+    ctl.distillReply = reply
+    const result = await distillNow($)
+    expect(result.text).not.toContain('整理完成')
+    expect(w.get('distill:S1')).toBeUndefined()
+    expect(w.get('distill:error:C--proj')).toBeDefined()
+    expect(w.get('stats:C--proj')).toMatchObject({ counts: { 'distill.fail': 1 } })
+    expect(w.files.has(NOTES)).toBe(false)
+    ctl.distillReply = actionsReply()
+    await distillNow($)
+    expect(w.completes.length).toBe(2)
+    expect(w.get('distill:S1')).toMatchObject({ turn: 5 })
+  })
+}
+
+test('墓碑不能靠已整理過的使用者原話復活', async ($, on) => {
+  const w = world(on, 100_000, 1_000_000, {
+    'distill:S1': { turn: 3, anchor: '之前要求保留舊 B' },
+    'tombstones:C--proj': { known: [], dead: [{ title: '舊 B', at: 0 }] },
+  }, [], 6)
+  w.rows.push({ role: 'user', text: '之前要求保留舊 B', toolUses: [] }, { role: 'user', text: '現在改做另一件事', toolUses: [] })
+  ctl.distillReply = actionsReply({ op: 'add_memory', type: 'project', title: '舊 B', evidence: '又談到了', quote: '之前要求保留舊 B' })
+  await distillNow($)
+  expect(w.files.get(NOTES) ?? '').not.toContain('舊 B')
+  expect(lastOf(w).rejected.samples.join('\n')).toContain('使用者刪過「舊 B」')
+})
+
+for (const when of ['before', 'after']) {
+  test(`必要經驗檔讀取失敗不覆寫、不推進：${when}`, async ($, on) => {
+    const w = world(on, 100_000, 1_000_000, {}, [], 5)
+    w.files.set(NOTES, EXISTING)
+    const deny = () => { ctl.failRead = { path: NOTES, reason: 'EACCES: permission denied' } }
+    if (when === 'before') deny()
+    else ctl.onFork = deny
+    await distillNow($)
+    expect(w.files.get(NOTES)).toBe(EXISTING)
+    expect(w.writes).not.toContain(NOTES)
+    expect(w.get('distill:S1')).toBeUndefined()
+    expect(w.get('distill:error:C--proj')).toBeDefined()
+    expect(w.completes.length).toBe(when === 'before' ? 0 : 1)
+  })
+}
+
 // 事故（2026-10-14，issue #3）：使用者手動整理掉的記憶，整理不知道刪過，同一段對話還在談那些主題就會加回來
 test('墓碑：直接改檔刪掉的記憶，整理加不回來；使用者又提起（附原話）才加回', async ($, on) => {
   let n = 5
