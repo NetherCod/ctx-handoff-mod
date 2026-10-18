@@ -6,6 +6,8 @@ All notable changes to ctx-handoff. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+- Slimmer note loading and quieter idle updates: preferences and corrections load in full when recent (14 days) or confirmed more than once, older one-off items drop to title-only and archive after 30 days, home-directory sessions skip automatic project notes, and idle notes updates run at most once per idle period without logging timeouts as errors.
+
 ## [0.8.0] - 2026-10-17
 
 You can now pause away work for a single conversation without turning it off everywhere (while project notes keep updating), and see right in the panel how many background tokens this session has used. Under the hood, background notes and handoff recovery are much tougher: failed updates don't skip your conversation, retries never double-count rules, deleted memories can't be brought back by something you said earlier in the same long chat, and an undelivered handoff can be recovered even after restarting Claude Code.

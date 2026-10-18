@@ -1,7 +1,7 @@
 // 經驗檔：手動編輯不被吃掉、POSIX 路徑、記憶的格式（標題、根據、原話）
 import { expect, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
-import { cmd, say, NOTES, distillNow, EXISTING, CLAUDE_PROJECTS, lastOf, openPanel, actionsReply, ctl, world } from './test-world'
+import { cmd, say, endTurn, NOTES, distillNow, EXISTING, CLAUDE_PROJECTS, lastOf, openPanel, actionsReply, ctl, world } from './test-world'
 
 // ---------- S7：經驗檔手動編輯不被吃掉 ----------
 
@@ -269,7 +269,7 @@ test('S7 記憶的欄位原樣保留、認不得的延續行併進標題、自�
 // mock.clock 從 0 開始：今天是 1970-01-01，超過 30 天前的根據就算封存
 const TIERED_NOTES = [
   '# ctx-handoff 專案經驗', '', '## 記憶',
-  '- [feedback] 回報用條列', '  - 做法：一點一行', '  - 理由：好讀', '  - 根據：1969-01-01 abc｜使用者原話：「用條列」',
+  '- [feedback] 回報用條列', '  - 做法：一點一行', '  - 理由：好讀', '  - 根據：1969-12-25 abc｜使用者原話：「用條列」',
   '- [project] 新鮮的事實', '  - 做法：細節只在正本', '  - 根據：1969-12-20 abc｜最近證實過',
   '- [reference] 很久沒證實的位置', '  - 根據：1969-11-01 abc｜很久以前',
   '- [project] 沒有日期的事實',
@@ -455,4 +455,41 @@ test('記憶的根據：模型自己在開頭寫的日期去掉，只留程式�
   ctl.distillReply = actionsReply({ op: 'add_memory', type: 'project', title: '有日期的根據', evidence: '1970-01-01｜PR #1 實測' })
   await distillNow($)
   expect(w.files.get(NOTES) ?? '').toContain('  - 根據：1970-01-01 S1｜PR #1 實測')
+})
+
+test('偏好與修正依熱度與次數分級：14 天內或 ≥2 筆根據整條帶入；冷掉的單次 user 只帶標題；超過 30 天的單次 feedback 封存', async ($, on) => {
+  const w = world(on, 1000)
+  w.files.set(NOTES, [
+    '# ctx-handoff 專案經驗', '', '## 記憶',
+    '- [feedback] 講過兩次的老習慣', '  - 做法：照做兩次', '  - 理由：常犯', '  - 根據：1969-06-01 a｜第一次', '  - 根據：1969-07-01 b｜第二次',
+    '- [user] 20 天前講過一次的偏好', '  - 做法：冷掉的做法', '  - 理由：冷掉的理由', '  - 根據：1969-12-12 a｜一次',
+    '- [feedback] 20 天前講過一次的修正', '  - 做法：二十天做法', '  - 根據：1969-12-12 b｜一次',
+    '- [feedback] 40 天前講過一次的修正', '  - 做法：很久以前某頁修正', '  - 根據：1969-11-10 c｜一次',
+    '', '## 規則',
+  ].join('\n'))
+  const r = await $.prompt.context({ blocks: [] })
+  const text = r.blocks.find(b => b.name === 'ctxHandoffProject')?.text ?? ''
+  expect(text).toContain(['- [feedback] 講過兩次的老習慣', '  - 做法：照做兩次', '  - 理由：常犯'].join('\n'))
+  expect(text).toContain('- [user] 20 天前講過一次的偏好')
+  expect(text).toContain('- [feedback] 20 天前講過一次的修正')
+  expect(text).not.toContain('冷掉的做法')
+  expect(text).not.toContain('二十天做法')
+  expect(text).not.toContain('40 天前講過一次的修正')
+  expect((await cmd($, '')).text).toContain('記憶帶入：偏好與修正 1 條整條、事實與位置 2 條只帶標題、封存 1 條')
+})
+
+test('家目錄工作區：不自動整理也不自動帶入專案筆記，手動 /handoff distill 仍可用', async ($, on) => {
+  const w = world(on, 100_000, 1_000_000, {}, [], 30)
+  ctl.curRoot = 'C:/Users/u'
+  ctl.curCwd = 'C:/Users/u'
+  const HOME_NOTES = 'C:/Users/u/.claude/projects/C--Users-u/memory/ctx-handoff.md'
+  w.files.set(HOME_NOTES, TIERED_NOTES)
+  const ctx = await $.prompt.context({ blocks: [] })
+  expect(ctx.blocks).toEqual([])
+  await say($, '在家目錄問個問題')
+  await endTurn($)
+  await w.clock.advance(0)
+  expect(w.completes.length).toBe(0)
+  await distillNow($)
+  expect(w.completes.length).toBe(1)
 })

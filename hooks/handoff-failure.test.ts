@@ -1,6 +1,6 @@
 // 交接的失敗與時間：失敗可見可重送、重試間隔、fork 卡住與逾時、搬移、專案鍵
 import { expect, test } from 'claude-code/testing'
-import { composer, cmd, say, stop, NOTES, distillNow, EXISTING, CLAUDE_PROJECTS, ALPHA, ALPHA_NOTES, repo, lastOf, actionsReply, ctl, world } from './test-world'
+import { composer, cmd, say, endTurn, stop, NOTES, distillNow, EXISTING, CLAUDE_PROJECTS, ALPHA, ALPHA_NOTES, repo, lastOf, actionsReply, ctl, world } from './test-world'
 
 // ---------- S6：失敗可見、可重送、重試有間隔 ----------
 
@@ -161,11 +161,18 @@ test('交接前整理很慢：對話片段先讀好，handoff 一好就 /clear�
   expect(w.contexts.at(-1)).toBeUndefined()
 })
 
-test('整理請求逾時：時限 8 分鐘交給引擎，回 aborted 就記錄，之後的整理不會被擋住', async ($, on) => {
+test('整理請求逾時：手動整理回 aborted 仍記錄錯誤；閒置整理逾時安靜略過且第 2、3 次刷新不重試', async ($, on) => {
   const w = world(on, 100_000, 1_000_000, {}, [], 5)
   ctl.completeAborts = true
-  await distillNow($)
+  await endTurn($)
+  await w.clock.advance(55 * 60_000)
+  expect(w.completes.length).toBe(1)
   expect(w.completes[0]?.timeoutMs).toBe(8 * 60_000)
+  expect(w.get('distill:error:C--proj')).toBeUndefined()
+  await w.clock.advance(55 * 60_000)
+  expect(w.completes.length).toBe(1)
+  await distillNow($)
+  expect(w.completes.length).toBe(2)
   const err = w.get('distill:error:C--proj') as { reason: string }
   expect(err.reason).toContain('timeout')
   ctl.completeAborts = false

@@ -236,11 +236,20 @@ async function clearAndSubmit($: EngineInterface, text: string) {
 
 // ---------- 背景整理：位置與流程 ----------
 
+async function homeDir($: EngineInterface) {
+  return slash((await $.env.get('USERPROFILE')) ?? (await $.env.get('HOME')) ?? '')
+}
+
 async function claudeDir($: EngineInterface) {
   const custom = await $.env.get('CLAUDE_CONFIG_DIR')
   if (custom) return slash(custom)
-  const home = (await $.env.get('USERPROFILE')) ?? (await $.env.get('HOME')) ?? ''
-  return `${slash(home)}/.claude`
+  return `${await homeDir($)}/.claude`
+}
+
+// 在使用者家目錄開的對話不是單一專案：不自動整理也不自動帶入專案筆記（全域規則在 ~/.claude/CLAUDE.md）
+async function isHomeWorkspace($: EngineInterface) {
+  const home = await homeDir($)
+  return home !== '' && (await workspace($)).toLowerCase() === home.toLowerCase()
 }
 
 async function readText($: EngineInterface, path: string) {
@@ -283,7 +292,7 @@ async function guidesText($: EngineInterface) {
 }
 
 async function isDistillOn($: EngineInterface) {
-  return (await $.store.get('distill')) !== false
+  return (await $.store.get('distill')) !== false && !(await isHomeWorkspace($))
 }
 
 // 整理要用的這段對話：交接時在 /clear 之前讀好，之後才整理也不受影響（/clear 後 session id 與訊息都換了）
@@ -363,6 +372,7 @@ async function distill($: EngineInterface, why: string, queue = true, snap?: Dis
       prompt: `=== 對話紀錄 ===\n${transcript.text || '（沒有新的對話內容）'}\n=== 對話紀錄結束 ===\n\n依系統指示輸出 ACTIONS。`,
     }, sid)
     if (!r.isAnswered) {
+      if (r.reason === 'aborted' && (why === t().distill.why.idle || why === t().distill.why.away)) return r
       const reason = r.reason === 'api-error' ? `api-error ${r.status ?? ''} ${r.error}`.replace(/\s+/g, ' ')
         : r.reason === 'aborted' ? t().distill.timeout(DISTILL_TIMEOUT_MS / 60_000) : r.reason
       await fail(reason)
@@ -536,7 +546,7 @@ async function onIdle($: EngineInterface) {
       $.ui.log(t().idle.refreshSkipped)
       return
     }
-    if (await isDistillOn($)) await distill($, t().distill.why.idle)
+    if (rt.refreshes === 0 && await isDistillOn($)) await distill($, t().distill.why.idle)
     if (!(await sourceIsFresh($, { sid, activity }, true))) return
     rt.refreshes += 1
     $.ui.log(r.isAnswered
@@ -549,7 +559,7 @@ async function onIdle($: EngineInterface) {
 
   rt.busy = true
   try {
-    if (await isDistillOn($)) await distill($, t().distill.why.away)
+    if (rt.refreshes === 0 && await isDistillOn($)) await distill($, t().distill.why.away)
     if (!(await sourceIsFresh($, { sid, activity }))) return
     const handoff = await makeHandoff($, 'away', tokens, { sid, activity })
     if (handoff === undefined) return
@@ -1295,6 +1305,7 @@ export const register: Register = on => {
     const out = await next(e)
     await initLang($)
     try {
+      if (await isHomeWorkspace($)) return out
       const file = await notesFile($)
       const notes = parseNotes(await readNotes($, file))
       const text = contextText(notes, file, localStamp(await $.clock.now()).slice(0, 10))

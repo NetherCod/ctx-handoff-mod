@@ -1,8 +1,9 @@
 // 專案經驗檔：記憶、規則與流程的型別、解析、輸出、封存分層與帶入新對話的文字（純函式，不碰 $）
 
 export const tag = '[ctx-handoff]'
-// 新對話開頭帶入：偏好與修正（user／feedback）整條；事實與位置（project／reference）只帶標題，
-// 超過 STALE_DAYS 天沒被證實就封存（不帶入、不刪除，再被證實就恢復）；加上出現 2 次以上的規則（最多 15 條）
+// 新對話開頭帶入：偏好與修正（user／feedback）在 HOT_DAYS 內或根據 ≥ 2 筆時整條帶入，否則退為只帶標題；
+// 事實與位置（project／reference）以及單次（根據 < 2 筆）的 feedback 超過 STALE_DAYS 天沒被證實就封存；加上出現 2 次以上的規則（最多 15 條）
+export const HOT_DAYS = 14
 export const STALE_DAYS = 30
 const FACT_TYPES = ['project', 'reference']
 export const INJECT_MIN_COUNT = 2
@@ -146,24 +147,35 @@ export type Change = string
 // 最後一次被證實：根據裡最新的日期（沒有日期的不封存）
 const lastSeen = (m: Memory) =>
   m.evidence.map(e => /^(\d{4}-\d{2}-\d{2})/.exec(e)?.[1]).filter((d): d is string => d !== undefined).sort().at(-1)
-// day：今天（本地 YYYY-MM-DD）
-export function isArchived(m: Memory, day: string) {
+const ageMs = (m: Memory, day: string) => {
   const seen = lastSeen(m)
-  return FACT_TYPES.includes(m.type) && seen !== undefined && Date.parse(day) - Date.parse(seen) > STALE_DAYS * 24 * 60 * 60_000
+  return seen === undefined ? undefined : Date.parse(day) - Date.parse(seen)
+}
+// day：今天（本地 YYYY-MM-DD）。project／reference 與單次（根據 < 2 筆）的 feedback 超過 STALE_DAYS 天封存
+export function isArchived(m: Memory, day: string) {
+  const age = ageMs(m, day)
+  const archivable = FACT_TYPES.includes(m.type) || (m.type === 'feedback' && m.evidence.length < 2)
+  return archivable && age !== undefined && age > STALE_DAYS * 24 * 60 * 60_000
+}
+// user／feedback 在 HOT_DAYS 內、根據 ≥ 2 筆或無日期時整條帶入；冷掉的單次條目退為只帶標題
+export function isFullMemory(m: Memory, day: string) {
+  if (FACT_TYPES.includes(m.type) || isArchived(m, day)) return false
+  const age = ageMs(m, day)
+  return age === undefined || m.evidence.length >= 2 || age <= HOT_DAYS * 24 * 60 * 60_000
 }
 
 export const memoryTiers = (notes: Notes, day: string) => {
-  const facts = notes.memory.filter(m => FACT_TYPES.includes(m.type))
-  const archived = facts.filter(m => isArchived(m, day)).length
-  return { full: notes.memory.length - facts.length, titles: facts.length - archived, archived }
+  const archived = notes.memory.filter(m => isArchived(m, day)).length
+  const full = notes.memory.filter(m => isFullMemory(m, day)).length
+  return { full, titles: notes.memory.length - archived - full, archived }
 }
 
 // 帶入新對話開頭的內容；沒有東西就不帶。根據只給整理模型判斷用，不帶入
 export function contextText(notes: Notes, file: string, day: string) {
   const rules = notes.rules.filter(r => r.count >= INJECT_MIN_COUNT && !inProject(r))
     .sort((a, b) => b.count - a.count).slice(0, INJECT_RULES)
-  const full = notes.memory.filter(m => !FACT_TYPES.includes(m.type))
-  const titles = notes.memory.filter(m => FACT_TYPES.includes(m.type) && !isArchived(m, day))
+  const full = notes.memory.filter(m => isFullMemory(m, day))
+  const titles = notes.memory.filter(m => !isArchived(m, day) && !isFullMemory(m, day))
   if (full.length + titles.length === 0 && rules.length === 0) return undefined
   return [
     `${NOTE_TAG} 這個工作區累積的${[full.length + titles.length ? '記憶' : '', rules.length ? '規則' : ''].filter(Boolean).join('與')}，正本在 ${file}，可以直接編輯。`,

@@ -94,11 +94,13 @@ test('規則的 project：換掉「- 專案：」那一行；沒有就加上', (
   assert.ok(read('B').includes('- 規則：做 X\n- 專案：不放\n') && !read('B').includes('已在 CLAUDE.md'))
 })
 
-test('injectedChars：不計入根據行、超過 30 天封存的事實記憶與已放進專案的規則', () => {
+test('injectedChars：不計入根據行、冷掉單次偏好只算標題、超過 30 天封存的事實與單次 feedback、已放進專案的規則', () => {
   const raw = [
     '# ctx-handoff 專案經驗', '',
     '## 記憶',
-    '- [user] 偏好簡短', '  - 做法：直接回答', '  - 根據：2026-10-01 很長的根據內容不該算進帶入量',
+    '- [user] 偏好簡短', '  - 做法：直接回答', '  - 根據：2026-10-10 很長的根據內容不該算進帶入量',
+    '- [user] 舊單次偏好只算標題', '  - 做法：冷掉不帶入', '  - 根據：2026-09-25 單次',
+    '- [feedback] 過期單次修正封存不帶入', '  - 做法：不帶', '  - 根據：2026-09-01 單次',
     '- [project] 新事實只算標題', '  - 做法：細節不帶入', '  - 根據：2026-10-10 驗證',
     '- [project] 過期事實封存不帶入', '  - 根據：2026-01-01 舊驗證',
     '', '## 規則', '',
@@ -108,6 +110,7 @@ test('injectedChars：不計入根據行、超過 30 天封存的事實記憶與
   const n = parseNotes(raw)
   const chars = injectedChars(n, '2026-10-17')
   const expected = '- [user] 偏好簡短\n  - 做法：直接回答'.length + 1
+    + '- [user] 舊單次偏好只算標題'.length + 1
     + '- [project] 新事實只算標題'.length + 1
     + '- 該帶入的規則（3 次）：先跑測試'.length
   assert.equal(chars, expected)
