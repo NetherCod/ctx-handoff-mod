@@ -8,16 +8,16 @@ All notable changes to ctx-handoff. The format follows [Keep a Changelog](https:
 
 ## [0.8.1] - 2026-10-18
 
-New conversations load fewer stale details from your project notes, throwaway chats started in your home folder no longer pile into one shared notes file, and idle sessions won't repeatedly log timeout errors overnight.
+After using ctx-handoff heavily for weeks and accumulating over a hundred notes in a single project, we hit three everyday annoyances: one-off UI tweaks from weeks ago kept loading in full into every new chat and burning tokens, quick throwaway questions started in the home folder all piled into one messy notes file, and idle windows left open overnight logged a wall of red timeout errors whenever the network blipped. This release polishes all three away—you still don't have to manage your notes by hand, and every new conversation starts lighter, sharper, and quieter.
 
 ### Changed
 
-- **Slimmer note loading for older one-off preferences and corrections:** preferences (`user`) and corrections (`feedback`) load in full when they are from the last 14 days or confirmed more than once; older one-off items drop to title-only so Claude can read the details when needed, and one-off corrections unconfirmed for 30 days are archived just like facts.
-- **No automatic project notes in your home folder:** conversations started directly in your home directory (`~` or `%USERPROFILE%`) skip automatic notes updates and don't auto-load project notes, keeping throwaway chats from mixing unrelated work into one file (`/handoff distill` still works by hand).
+- **Automatic note slimming as your project grows:** things you taught Claude recently (within 14 days) or had to repeat more than once still load in full (`user` and `feedback`, with how and why); older one-off tweaks automatically fold down to a one-line title so Claude only reads the details when relevant, and one-off corrections untouched for 30 days are archived automatically—saving tokens and attention without manual cleanup.
+- **Throwaway chats in your home folder no longer pile into one shared file:** opening a terminal in your home directory (`~` or `%USERPROFILE%`) to ask a quick question isn't a project, so sessions started there no longer auto-update or auto-load project notes (you can still run `/handoff distill` by hand whenever you want).
 
 ### Fixed
 
-- **Idle notes updates try once per idle period and skip timeouts quietly:** background notes now run only on the first idle refresh (instead of retrying on every cache refresh tick), and an idle update that times out is silently skipped until you chat again or hand off.
+- **Overnight idle windows stay quiet instead of retrying timeouts every hour:** previously, if an idle notes update hit an API timeout, every subsequent cache refresh tried the same slice again and left a trail of red errors. Idle updates now try at most once per idle period, and if one times out while you're away it is quietly skipped until you chat again or hand off.
 
 ## [0.8.0] - 2026-10-17
 
