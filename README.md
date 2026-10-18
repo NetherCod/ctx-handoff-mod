@@ -67,7 +67,7 @@ Off by default, so Claude Code's own compact takes over. Turn on `auto_handoff` 
 
 ### Keeps the cache warm while you're away
 
-After about 55 idle minutes it sends a tiny request so the conversation cache doesn't expire, up to 3 times (about 4 hours); after that it saves a handoff summary without clearing, so when you return you choose to start fresh from it (`/handoff resume`) or stay where you were (`continue`).
+After about 50 idle minutes it sends a tiny request so the conversation cache doesn't expire (and stays ahead of Claude Code's 54-minute idle compaction on large chats), up to 3 times (about 3.5 hours); after that it saves a handoff summary without clearing, so when you return you choose to start fresh from it (`/handoff resume`) or stay where you were (`continue`).
 
 To pause away refreshes and away summaries for just this conversation, click the button at the top of the panel or run `/handoff away pause` (`resume` restarts the timer). Notes updates keep running, and other conversations aren't affected. The panel and `/handoff` also show live background activity and the session's reported background token usage since this update (not a bill; requests already sent cannot be cancelled).
 

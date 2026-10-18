@@ -6,8 +6,9 @@ export const PROGRESS_STATES = ['done', 'in_progress', 'blocked'] as const
 export type ProgressState = (typeof PROGRESS_STATES)[number]
 const STATE_LABEL: Record<ProgressState, string> = { done: '完成', in_progress: '進行中', blocked: '卡住了' }
 
-// 超過這麼久的進度不再提供（對話已經隔了一天以上，狀態多半變了）
-export const PROGRESS_MAX_AGE_MS = 24 * 60 * 60_000
+// 超過這麼久的進度不再提供（7 天內涵蓋跨週末接續；超過一週狀態多半已變）
+export const PROGRESS_MAX_AGE_DAYS = 7
+export const PROGRESS_MAX_AGE_MS = PROGRESS_MAX_AGE_DAYS * 24 * 60 * 60_000
 // 整份的字數只設防失控的上限（中英文都算一個字），不拿來控制寫多少：維護者 2026-10-09 決定放寬
 // （原本每欄 80–120 字、整份 600 字），只跟眼前工作有關的決定也改由進度備忘帶（decisions）
 export const PROGRESS_TOTAL_MAX = 4000
@@ -32,7 +33,9 @@ export const progressSize = (p: ProgressFields) =>
 export function agoText(ms: number) {
   const min = Math.round(Math.max(0, ms) / 60_000)
   if (min < 1) return '剛才'
-  return min < 60 ? `${min} 分鐘前` : `${Math.round(min / 60)} 小時前`
+  if (min < 60) return `${min} 分鐘前`
+  const hr = Math.round(min / 60)
+  return hr < 24 ? `${hr} 小時前` : `${Math.round(hr / 24)} 天前`
 }
 
 // 這份進度的內容（一行）

@@ -37,7 +37,7 @@ export const SETTINGS: readonly SettingSpec[] = [
   { key: 'auto_handoff', kind: 'bool', d: false },
   { key: 'threshold', kind: 'num', min: 50_000, max: 2_000_000, step: 50_000, d: 600_000 },
   { key: 'window_ratio', kind: 'num', min: 0.3, max: 0.95, step: 0.05, d: 0.8 },
-  { key: 'idle_minutes', kind: 'num', min: 5, max: 59, step: 5, d: 55 },
+  { key: 'idle_minutes', kind: 'num', min: 5, max: 59, step: 5, d: 50 },
   { key: 'max_refresh', kind: 'num', min: 0, max: 10, step: 1, d: 3 },
   { key: 'min_tokens', kind: 'num', min: 0, max: 500_000, step: 10_000, d: 30_000 },
   { key: 'distill_every', kind: 'num', min: 5, max: 200, step: 5, d: 30 },
@@ -73,7 +73,7 @@ export const settingSource = (key: string, panel: Record<string, unknown>, optio
   panel[key] !== undefined ? 'panel' : options[key] !== undefined ? 'file' : 'default'
 
 const CONFIG_DEFAULTS: Config = {
-  autoHandoff: false, threshold: 600_000, windowRatio: 0.8, idleMs: 55 * 60_000, maxRefresh: 3, minTokens: 30_000, distillEvery: 30,
+  autoHandoff: false, threshold: 600_000, windowRatio: 0.8, idleMs: 50 * 60_000, maxRefresh: 3, minTokens: 30_000, distillEvery: 30,
   notesModel: 'claude-sonnet-5-5', language: 'auto', retryNudge: true, doneCheck: true, replyLanguage: 'auto', resumeHint: true,
 }
 // 目前的設定：只改欄位、不換物件，各檔 import 到的是同一份

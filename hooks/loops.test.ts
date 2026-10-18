@@ -51,14 +51,14 @@ test('驗證指令：測試、檢查、建置算；只是看檔案的不算', ()
     expect(isCheckCommand(c)).toBe(false)
 })
 
-test('完成的說法：保守判斷，否定、提問、已說明沒驗證的不算', () => {
+test('完成的說法：保守判斷，否定、提問、已說明沒驗證或測試失敗的不算', () => {
   for (const m of ['已經改好了，完成了。', '都好了', '修好了', 'All done.', "I've fixed it", 'It is now fixed and working.', '全部完成'])
     expect(claimsDone(m)).toBe(true)
-  for (const m of ['還沒完成，我再看看', '尚未完成', '我先看過程式碼', '要我完成嗎？', 'Is it done?', '完成了，但我沒有跑測試', 'Done, though I could not run the tests', undefined, ''])
+  for (const m of ['還沒完成，我再看看', '尚未完成', '我先看過程式碼', '要我完成嗎？', 'Is it done?', '完成了，但我沒有跑測試', '已經改好了，但測試失敗', 'All done, though 1 test failed', 'Done, though I could not run the tests', undefined, ''])
     expect(claimsDone(m)).toBe(false)
 })
 
-test('完成前驗證：改檔後沒驗證才擋、每回合一次', () => {
+test('完成前驗證：改檔後沒驗證或測試失敗才擋、scratchpad 不誤擋、每回合一次', () => {
   const run = (setup: (w: Work) => void, msg = '完成了', active = false) => {
     const w = freshWork()
     setup(w)
@@ -67,14 +67,18 @@ test('完成前驗證：改檔後沒驗證才擋、每回合一次', () => {
   const edit = (w: Work) => noteCall(w, 'Edit', { file_path: 'a.ts' }, false)
   const test_ = (w: Work) => noteCall(w, 'Bash', { command: 'npm test' }, false)
   expect(run(edit).reason).toContain('[ctx-handoff]')
-  // 沒改檔、改了文件、改檔失敗：不擋
+  // 沒改檔、改了文件、寫入 scratchpad 暫存檔、改檔失敗：不擋
   expect(run(() => {}).reason).toBeUndefined()
   expect(run(w => noteCall(w, 'Edit', { file_path: 'README.md' }, false)).reason).toBeUndefined()
+  expect(run(w => noteCall(w, 'Write', { file_path: 'C:/Users/u/AppData/Local/Temp/claude/p/s/scratchpad/ops.json' }, false)).reason).toBeUndefined()
+  expect(run(w => noteCall(w, 'Write', { file_path: '/tmp/claude/s/scratchpad/tmp.ts' }, false)).reason).toBeUndefined()
   expect(run(w => noteCall(w, 'Edit', { file_path: 'a.ts' }, true)).reason).toBeUndefined()
-  // 改檔後有跑（失敗也算跑過）；跑完又改才算沒驗證
+  // 改檔後測試通過不擋；測試失敗卻直接說完成會擋（誠實說明失敗則不擋）；跑完又改才算沒驗證
   expect(run(w => { edit(w); test_(w) }).reason).toBeUndefined()
-  expect(run(w => { edit(w); noteCall(w, 'Bash', { command: 'npm test' }, true) }).reason).toBeUndefined()
-  expect(run(w => { edit(w); test_(w); edit(w) }).reason).toContain('[ctx-handoff]')
+  expect(run(w => { edit(w); noteCall(w, 'Bash', { command: 'npm test' }, true) }).reason).toContain('測試或檢查沒有通過')
+  expect(run(w => { edit(w); test_(w); noteCall(w, 'Bash', { command: 'npm run lint' }, true) }).reason).toContain('測試或檢查沒有通過')
+  expect(run(w => { edit(w); noteCall(w, 'Bash', { command: 'npm test' }, true) }, '已經改好了，但測試失敗').reason).toBeUndefined()
+  expect(run(w => { edit(w); test_(w); edit(w) }).reason).toContain('沒有跑任何測試或檢查')
   // 沒說完成、別的 hook 已擋過：不擋
   expect(run(edit, '我改了 a.ts，接下來請你看看').reason).toBeUndefined()
   expect(run(edit, '完成了', true).reason).toBeUndefined()
@@ -196,12 +200,19 @@ test('完成前驗證：改檔之後跑過測試、沒改檔、沒說完成、�
   expect((await stop($, claim)).block).toBeUndefined()
 })
 
-test('完成前驗證：改檔失敗不算改檔、跑失敗的測試也算跑過', async ($, on) => {
+test('完成前驗證：改檔失敗或只寫 scratchpad 不算改檔；測試失敗卻直接說完成會擋下，重跑通過才放行', async ($, on) => {
   world(on, 1000)
   ctl.toolReply = e => (e.tool === 'Edit' || e.command === 'npm test' ? fail('boom') : undefined)
   await $.tool.call({ tool: 'Edit', file_path: 'a.ts', old_string: 'a', new_string: 'b' })
   expect((await stop($, claim)).block).toBeUndefined()
+  await $.tool.call({ tool: 'Write', file_path: 'C:/Users/u/AppData/Local/Temp/claude/p/s/scratchpad/clean.json', content: '{}' })
+  expect((await stop($, claim)).block).toBeUndefined()
   ctl.toolReply = e => (e.command === 'npm test' ? fail('1 failed') : undefined)
+  await $.tool.call({ tool: 'Edit', file_path: 'a.ts', old_string: 'a', new_string: 'b' })
+  await $.tool.call({ tool: 'Bash', command: 'npm test' })
+  expect((await stop($, claim)).block).toContain('測試或檢查沒有通過')
+  // 下一輪修好並重跑測試通過後放行
+  ctl.toolReply = undefined
   await $.tool.call({ tool: 'Edit', file_path: 'a.ts', old_string: 'a', new_string: 'b' })
   await $.tool.call({ tool: 'Bash', command: 'npm test' })
   expect((await stop($, claim)).block).toBeUndefined()

@@ -336,7 +336,7 @@ test('暫停離席取消timer但手動整理仍可用，恢復從現在重排', 
   await cmd($, 'distill')
   expect(w.completes.length).toBe(1)
   await cmd($, 'away resume')
-  await w.clock.advance(54 * 60_000)
+  await w.clock.advance(49 * 60_000)
   expect(w.forks).toEqual([])
   await w.clock.advance(60_000)
   expect(w.forks.at(-1)).toBe('只回覆 OK')
@@ -600,7 +600,7 @@ for (const changed of ['prompt', 'session', 'pause']) {
     expect((await cmd($, '')).text).toContain('0/3')
     w.put('distill', false)
     for (let i = 0; i < 3; i++) {
-      await w.clock.advance((i === 0 ? 50 : 55) * 60_000)
+      await w.clock.advance((i === 0 ? 45 : 50) * 60_000)
       expect(w.forks.at(-1)).toBe('只回覆 OK')
       expect(w.forks.filter(p => p === '只回覆 OK').length).toBe(i + 2)
     }

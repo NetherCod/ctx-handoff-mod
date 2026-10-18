@@ -6,6 +6,19 @@ All notable changes to ctx-handoff. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-10-18
+
+Nothing breaks your flow faster than coming back on Monday morning to a blank slate because your Friday progress note expired after 24 hours, watching Claude confidently say "all done!" right after a test run failed, or getting scolded by the "done" check when you only wrote a temporary file in `scratchpad/`. And with Claude Code 2.1.299+ now compacting large idle chats at 54 minutes, our old 55-minute keep-warm timer was arriving one minute too late. This release fixes all three so your weekends, test checks, and long-session caches work the way you'd naturally expect.
+
+### Changed
+
+- **Come back after the weekend without losing your place:** if you wrap up on Friday and open a fresh conversation on Monday, the progress note from your last session is now still waiting for you (kept for up to 7 days instead of expiring after 24 hours, with day-level timestamps like "3 days ago"), so you don't have to dig through git logs to remember what was next. Setting: `resume_hint`.
+- **Keep-warm requests arrive before Claude Code's 54-minute auto-compaction:** Claude Code 2.1.299+ automatically compacts 200k+ token conversations after 54 idle minutes; shifting the default keep-warm timer from 55 to 50 minutes lets ctx-handoff refresh your 1-hour cache before forced compaction kicks in. Setting: `idle_minutes`.
+
+### Fixed
+
+- **No more "all done!" on a red test suite—and no more false alarms on scratchpad files:** previously, if Claude edited code, ran a test that failed, and still claimed it was done without mentioning the failure, the check let it slip through; conversely, writing a temporary file in Claude's `scratchpad/` folder during a non-coding turn could falsely block the turn and demand a test run. Now failed checks are caught unless Claude honestly reports the failure, and `scratchpad/` edits are ignored. Setting: `done_check`.
+
 ## [0.8.1] - 2026-10-18
 
 After using ctx-handoff heavily for weeks and accumulating over a hundred notes in a single project, we hit three everyday annoyances: one-off UI tweaks from weeks ago kept loading in full into every new chat and burning tokens, quick throwaway questions started in the home folder all piled into one messy notes file, and idle windows left open overnight logged a wall of red timeout errors whenever the network blipped. This release polishes all three away—you still don't have to manage your notes by hand, and every new conversation starts lighter, sharper, and quieter.
@@ -171,7 +184,8 @@ Notes stay in the project you started in, and updating them costs far less.
 
 First release: automatic handoff at a context threshold, keeping the cache warm while you're away with a saved handoff after that, and project notes.
 
-[unreleased]: https://github.com/cablate/ctx-handoff-mod/compare/ctx-handoff--v0.8.1...HEAD
+[unreleased]: https://github.com/cablate/ctx-handoff-mod/compare/ctx-handoff--v0.8.2...HEAD
+[0.8.2]: https://github.com/cablate/ctx-handoff-mod/compare/ctx-handoff--v0.8.1...ctx-handoff--v0.8.2
 [0.8.1]: https://github.com/cablate/ctx-handoff-mod/compare/ctx-handoff--v0.8.0...ctx-handoff--v0.8.1
 [0.8.0]: https://github.com/cablate/ctx-handoff-mod/compare/ctx-handoff--v0.7.0...ctx-handoff--v0.8.0
 [0.7.0]: https://github.com/cablate/ctx-handoff-mod/compare/ctx-handoff--v0.6.0...ctx-handoff--v0.7.0
