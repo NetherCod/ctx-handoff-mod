@@ -6,7 +6,18 @@ All notable changes to ctx-handoff. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
-- Slimmer note loading and quieter idle updates: preferences and corrections load in full when recent (14 days) or confirmed more than once, older one-off items drop to title-only and archive after 30 days, home-directory sessions skip automatic project notes, and idle notes updates run at most once per idle period without logging timeouts as errors.
+## [0.8.1] - 2026-10-18
+
+New conversations load fewer stale details from your project notes, throwaway chats started in your home folder no longer pile into one shared notes file, and idle sessions won't repeatedly log timeout errors overnight.
+
+### Changed
+
+- **Slimmer note loading for older one-off preferences and corrections:** preferences (`user`) and corrections (`feedback`) load in full when they are from the last 14 days or confirmed more than once; older one-off items drop to title-only so Claude can read the details when needed, and one-off corrections unconfirmed for 30 days are archived just like facts.
+- **No automatic project notes in your home folder:** conversations started directly in your home directory (`~` or `%USERPROFILE%`) skip automatic notes updates and don't auto-load project notes, keeping throwaway chats from mixing unrelated work into one file (`/handoff distill` still works by hand).
+
+### Fixed
+
+- **Idle notes updates try once per idle period and skip timeouts quietly:** background notes now run only on the first idle refresh (instead of retrying on every cache refresh tick), and an idle update that times out is silently skipped until you chat again or hand off.
 
 ## [0.8.0] - 2026-10-17
 
@@ -160,7 +171,8 @@ Notes stay in the project you started in, and updating them costs far less.
 
 First release: automatic handoff at a context threshold, keeping the cache warm while you're away with a saved handoff after that, and project notes.
 
-[unreleased]: https://github.com/cablate/ctx-handoff-mod/compare/ctx-handoff--v0.8.0...HEAD
+[unreleased]: https://github.com/cablate/ctx-handoff-mod/compare/ctx-handoff--v0.8.1...HEAD
+[0.8.1]: https://github.com/cablate/ctx-handoff-mod/compare/ctx-handoff--v0.8.0...ctx-handoff--v0.8.1
 [0.8.0]: https://github.com/cablate/ctx-handoff-mod/compare/ctx-handoff--v0.7.0...ctx-handoff--v0.8.0
 [0.7.0]: https://github.com/cablate/ctx-handoff-mod/compare/ctx-handoff--v0.6.0...ctx-handoff--v0.7.0
 [0.6.0]: https://github.com/cablate/ctx-handoff-mod/compare/ctx-handoff--v0.5.0...ctx-handoff--v0.6.0

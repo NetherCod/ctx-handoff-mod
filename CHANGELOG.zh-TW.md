@@ -6,7 +6,18 @@ ctx-handoff 每個版本值得注意的改動。格式依照 [Keep a Changelog](
 
 ## [未發布]
 
-- 精簡筆記帶入與安靜的閒置整理：偏好與修正在 14 天內或出現 2 次以上才整條帶入，較舊的單次條目改為只帶標題、滿 30 天自動封存；家目錄開的對話不自動整理或帶入專案筆記；每段閒置最多試一次筆記整理，閒置逾時安靜略過不報錯。
+## [0.8.1] - 2026-10-18
+
+新對話開頭不再背著一堆早已冷掉的單次修正細節，直接在家目錄隨手開的對話不會再把各種雜事混進同一份筆記，放著過夜的閒置視窗也不會每小時連環跳逾時紅字。
+
+### 變更
+
+- **冷掉的單次偏好與修正自動改為只帶標題或封存：** 偏好（`user`）與修正（`feedback`）在最近 14 天內或出現過 2 次以上時才整條帶入（含做法與理由）；超過 14 天的單次條目改為只帶一行標題，單次修正超過 30 天沒再發生則和事實類一樣自動封存。
+- **家目錄開的對話不自動整理或帶入專案筆記：** 直接在使用者家目錄（`~` 或 `%USERPROFILE%`）啟動的對話不再自動跑背景整理，也不會在開頭自動塞入專案筆記，避免隨手問的不同事情全混進同一份檔案（手動打 `/handoff distill` 仍可使用）。
+
+### 修正
+
+- **每段閒置最多試一次筆記整理，閒置逾時安靜略過：** 閒置期間只在第 1 次刷新時順手整理筆記（第 2、3 次快取刷新不再拿同一批對話重複重試）；閒置整理若遇到上游逾時會安靜略過、不記錯誤也不印紅字，留到下次有新對話或交接時再一起處理。
 
 ## [0.8.0] - 2026-10-17
 
@@ -160,7 +171,8 @@ Claude 現在會注意到自己的小錯：重跑同一個失敗時提醒、沒�
 
 第一版：context 到門檻時自動交接、離開時保持快取並在之後存好交接摘要，以及專案筆記。
 
-[未發布]: https://github.com/cablate/ctx-handoff-mod/compare/ctx-handoff--v0.8.0...HEAD
+[未發布]: https://github.com/cablate/ctx-handoff-mod/compare/ctx-handoff--v0.8.1...HEAD
+[0.8.1]: https://github.com/cablate/ctx-handoff-mod/compare/ctx-handoff--v0.8.0...ctx-handoff--v0.8.1
 [0.8.0]: https://github.com/cablate/ctx-handoff-mod/compare/ctx-handoff--v0.7.0...ctx-handoff--v0.8.0
 [0.7.0]: https://github.com/cablate/ctx-handoff-mod/compare/ctx-handoff--v0.6.0...ctx-handoff--v0.7.0
 [0.6.0]: https://github.com/cablate/ctx-handoff-mod/compare/ctx-handoff--v0.5.0...ctx-handoff--v0.6.0
