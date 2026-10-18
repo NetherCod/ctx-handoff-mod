@@ -100,16 +100,20 @@ export function proseOf(text: string): string {
 
 // 英文單字：2 個字母以上、全小寫或只有開頭大寫。全大寫縮寫（API、JSON）、駝峰、底線與夾數字的識別字都不算
 const WORD = /^[A-Z]?[a-z]{2,}$/
+const HAN_RE = /\p{Script=Han}/u
+const KANA_RE = /[\p{Script=Hiragana}\p{Script=Katakana}]/u
+const HANGUL_RE = /\p{Script=Hangul}/u
 
 export function countOf(prose: string): Counts {
   const c: Counts = { han: 0, kana: 0, hangul: 0, latin: 0, simp: 0, trad: 0 }
   for (const ch of prose) {
-    if (/\p{Script=Han}/u.test(ch)) {
+    if (ch <= '\u007f') continue
+    if (HAN_RE.test(ch)) {
       c.han += 1
       if (SIMPLIFIED_ONLY.has(ch)) c.simp += 1
       else if (TRADITIONAL_ONLY.has(ch)) c.trad += 1
-    } else if (/[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(ch)) c.kana += 1
-    else if (/\p{Script=Hangul}/u.test(ch)) c.hangul += 1
+    } else if (KANA_RE.test(ch)) c.kana += 1
+    else if (HANGUL_RE.test(ch)) c.hangul += 1
   }
   // I'll、don't 這類縮寫只看前半
   for (const w of prose.match(/[A-Za-z0-9_]+(?:'[A-Za-z]+)?/g) ?? []) if (WORD.test(w.replace(/'[A-Za-z]+$/, ''))) c.latin += 1

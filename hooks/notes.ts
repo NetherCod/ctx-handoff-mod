@@ -159,14 +159,19 @@ export function isArchived(m: Memory, day: string) {
 }
 // user／feedback 在 HOT_DAYS 內、根據 ≥ 2 筆或無日期時整條帶入；冷掉的單次條目退為只帶標題
 export function isFullMemory(m: Memory, day: string) {
-  if (FACT_TYPES.includes(m.type) || isArchived(m, day)) return false
+  if (FACT_TYPES.includes(m.type)) return false
+  if (m.evidence.length >= 2) return true
   const age = ageMs(m, day)
-  return age === undefined || m.evidence.length >= 2 || age <= HOT_DAYS * 24 * 60 * 60_000
+  return age === undefined || age <= HOT_DAYS * 24 * 60 * 60_000
 }
 
 export const memoryTiers = (notes: Notes, day: string) => {
-  const archived = notes.memory.filter(m => isArchived(m, day)).length
-  const full = notes.memory.filter(m => isFullMemory(m, day)).length
+  let full = 0
+  let archived = 0
+  for (const m of notes.memory) {
+    if (isFullMemory(m, day)) full += 1
+    else if (isArchived(m, day)) archived += 1
+  }
   return { full, titles: notes.memory.length - archived - full, archived }
 }
 
@@ -174,8 +179,12 @@ export const memoryTiers = (notes: Notes, day: string) => {
 export function contextText(notes: Notes, file: string, day: string) {
   const rules = notes.rules.filter(r => r.count >= INJECT_MIN_COUNT && !inProject(r))
     .sort((a, b) => b.count - a.count).slice(0, INJECT_RULES)
-  const full = notes.memory.filter(m => isFullMemory(m, day))
-  const titles = notes.memory.filter(m => !isArchived(m, day) && !isFullMemory(m, day))
+  const full: Memory[] = []
+  const titles: Memory[] = []
+  for (const m of notes.memory) {
+    if (isFullMemory(m, day)) full.push(m)
+    else if (!isArchived(m, day)) titles.push(m)
+  }
   if (full.length + titles.length === 0 && rules.length === 0) return undefined
   return [
     `${NOTE_TAG} 這個工作區累積的${[full.length + titles.length ? '記憶' : '', rules.length ? '規則' : ''].filter(Boolean).join('與')}，正本在 ${file}，可以直接編輯。`,

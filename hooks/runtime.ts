@@ -39,9 +39,8 @@ export const rt = {
   statQueue: Promise.resolve() as Promise<void>,
   // 上一次整理有沒有失敗（有回答但沒套用也算），給 /handoff distill 判斷
   distillFailed: false,
-  // 放進專案的工具完整名稱（mcp__<plugin>__<name>），以註冊結果為準；這個 process 沒註冊就是 undefined
-  // 守門的 store 鍵：工作區在 process 內不變，算一次就記住（熱重載會重算）
-  guardsKeyCache: undefined as string | undefined,
+  // 工作區解析快取：同一個 session root 算一次主工作樹就記住（熱重載或換 root 時重算）
+  workspaceCache: undefined as { root: string; dir: string } | undefined,
   // 設定與介面語言：第一次用到時讀一次就記住（熱重載會重算）
   langReady: undefined as Promise<void> | undefined,
   // 防呆提醒：各工具最近一段連續失敗，與這一輪的改檔／驗證紀錄。熱重載會清掉，清掉只是少一次提醒
@@ -79,7 +78,7 @@ export function resetRuntime() {
   rt.distillDone = undefined
   rt.statQueue = Promise.resolve()
   rt.distillFailed = false
-  rt.guardsKeyCache = undefined
+  rt.workspaceCache = undefined
   rt.langReady = undefined
   rt.streaks.clear()
   rt.work = freshWork()

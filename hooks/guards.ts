@@ -63,6 +63,15 @@ export function guardHits(g: Pick<Guard, 'tool' | 'match' | 'unless'>, tool: str
   }
 }
 
+// 先篩出啟用中且工具名稱符合的守門，沒有任何候選時不序列化參數（省下每次 Write／Edit 大檔案的 JSON.stringify）
+export function findGuardHit(guards: readonly Guard[], tool: string, input: Record<string, unknown>) {
+  const active = guards.filter(g => g.state === 'on' && toolMatches(g.tool, tool))
+  if (active.length === 0) return undefined
+  const text = inputText(input)
+  const hit = active.find(g => guardHits(g, tool, text))
+  return hit ? { hit, text } : undefined
+}
+
 export function guardPrompt(rules: Rule[], tools: string[]) {
   return [
     '你替一個 Claude Code 工作區設計「守門」：在 AI 呼叫工具之前，用正規表達式比對工具參數，攔下違反規則的呼叫。',
@@ -156,7 +165,7 @@ export function withProposals(out: ReturnType<typeof parseGuards>['out'], guards
   let id = guards.reduce((n, g) => Math.max(n, g.id), 0)
   return out.map(g => ({
     ...g, id: ++id, state: 'proposed' as const, at,
-    replay: { hits: calls.filter(c => guardHits(g, c.tool, inputText(c.input))).length, calls: calls.length },
+    replay: { hits: calls.filter(c => toolMatches(g.tool, c.tool) && guardHits(g, c.tool, inputText(c.input))).length, calls: calls.length },
   }))
 }
 

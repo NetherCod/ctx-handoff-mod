@@ -8,29 +8,29 @@ All notable changes to ctx-handoff. The format follows [Keep a Changelog](https:
 
 ## [0.8.2] - 2026-10-18
 
-Nothing breaks your flow faster than coming back on Monday morning to a blank slate because your Friday progress note expired after 24 hours, watching Claude confidently say "all done!" right after a test run failed, or getting scolded by the "done" check when you only wrote a temporary file in `scratchpad/`. And with Claude Code 2.1.299+ now compacting large idle chats at 54 minutes, our old 55-minute keep-warm timer was arriving one minute too late. This release fixes all three so your weekends, test checks, and long-session caches work the way you'd naturally expect.
+Progress notes now last 7 days so you can pick up after a weekend, the "done" check catches failed test runs instead of only missing ones (and ignores temporary files in `scratchpad/`), and the default idle refresh moves to 50 minutes to stay ahead of Claude Code 2.1.299+'s 54-minute idle compaction.
 
 ### Changed
 
-- **Come back after the weekend without losing your place:** if you wrap up on Friday and open a fresh conversation on Monday, the progress note from your last session is now still waiting for you (kept for up to 7 days instead of expiring after 24 hours, with day-level timestamps like "3 days ago"), so you don't have to dig through git logs to remember what was next. Setting: `resume_hint`.
-- **Keep-warm requests arrive before Claude Code's 54-minute auto-compaction:** Claude Code 2.1.299+ automatically compacts 200k+ token conversations after 54 idle minutes; shifting the default keep-warm timer from 55 to 50 minutes lets ctx-handoff refresh your 1-hour cache before forced compaction kicks in. Setting: `idle_minutes`.
+- **Progress notes last 7 days across weekends:** progress notes used to expire after 24 hours, so Friday's context was gone by Monday morning. As long as no handoff has replaced it, a new conversation within 7 days still gets where you left off (showing "N days ago" past 24 hours). Setting: `resume_hint`.
+- **Default idle refresh moved to 50 minutes:** Claude Code 2.1.299+ automatically compacts 200k+ token conversations after 54 idle minutes. Moving the default from 55 to 50 minutes refreshes your 1-hour cache before auto-compaction runs. Setting: `idle_minutes`.
 
 ### Fixed
 
-- **No more "all done!" on a red test suite—and no more false alarms on scratchpad files:** previously, if Claude edited code, ran a test that failed, and still claimed it was done without mentioning the failure, the check let it slip through; conversely, writing a temporary file in Claude's `scratchpad/` folder during a non-coding turn could falsely block the turn and demand a test run. Now failed checks are caught unless Claude honestly reports the failure, and `scratchpad/` edits are ignored. Setting: `done_check`.
+- **"Done" check catches failed tests and ignores `scratchpad/` files:** previously, running a test that failed still satisfied the check if Claude claimed it was done without mentioning the failure; conversely, writing a temporary file in Claude's `scratchpad/` folder could trigger the check when no project code changed. Failed checks now block unless Claude reports the failure, and `scratchpad/` paths are ignored. Setting: `done_check`.
 
 ## [0.8.1] - 2026-10-18
 
-After using ctx-handoff heavily for weeks and accumulating over a hundred notes in a single project, we hit three everyday annoyances: one-off UI tweaks from weeks ago kept loading in full into every new chat and burning tokens, quick throwaway questions started in the home folder all piled into one messy notes file, and idle windows left open overnight logged a wall of red timeout errors whenever the network blipped. This release polishes all three away—you still don't have to manage your notes by hand, and every new conversation starts lighter, sharper, and quieter.
+As project notes grow, new conversations now load full details only for recent or repeated preferences—folding older one-off corrections down to their title and archiving them after 30 days to save tokens. Sessions started in your home directory no longer auto-update or load project notes, and idle windows no longer log repeated timeout errors every hour.
 
 ### Changed
 
-- **Automatic note slimming as your project grows:** things you taught Claude recently (within 14 days) or had to repeat more than once still load in full (`user` and `feedback`, with how and why); older one-off tweaks automatically fold down to a one-line title so Claude only reads the details when relevant, and one-off corrections untouched for 30 days are archived automatically—saving tokens and attention without manual cleanup.
-- **Throwaway chats in your home folder no longer pile into one shared file:** opening a terminal in your home directory (`~` or `%USERPROFILE%`) to ask a quick question isn't a project, so sessions started there no longer auto-update or auto-load project notes (you can still run `/handoff distill` by hand whenever you want).
+- **Older one-off notes fold to titles and archive automatically:** preferences and corrections (`user` and `feedback`) from the last 14 days or with 2+ occurrences still load in full; one-off corrections older than 14 days load as a one-line title (Claude can read the file when needed), and one-off corrections untouched for 30 days are archived automatically without manual cleanup.
+- **Sessions started in your home directory skip auto-notes:** opening a terminal in `~` or `%USERPROFILE%` for a quick question isn't a single project, so sessions started there no longer auto-update or auto-load project notes instead of mixing unrelated chats into one file (`/handoff distill` still works manually).
 
 ### Fixed
 
-- **Overnight idle windows stay quiet instead of retrying timeouts every hour:** previously, if an idle notes update hit an API timeout, every subsequent cache refresh tried the same slice again and left a trail of red errors. Idle updates now try at most once per idle period, and if one times out while you're away it is quietly skipped until you chat again or hand off.
+- **Idle windows no longer retry and log timeouts every hour:** previously, if an idle notes update hit an API timeout, every subsequent cache refresh retried the same slice and logged another error. Idle updates now run at most once per idle period, and timeouts while you're away are quietly skipped until you chat again or hand off.
 
 ## [0.8.0] - 2026-10-17
 
