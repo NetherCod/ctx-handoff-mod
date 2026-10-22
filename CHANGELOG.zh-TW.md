@@ -15,6 +15,7 @@ ctx-handoff 每個版本值得注意的改動。格式依照 [Keep a Changelog](
 ### 修正
 
 - **Team／Enterprise 登入時，新對話又帶得到筆記：** Claude Code 2.1.304 起，Team／Enterprise 登入或有受管設定時會載入內建守門 mod `cc-plugin-sec-default`，它會跳過已安裝 mod 的 `prompt.context` hook，新對話因此沒有帶入筆記、進度備忘與放進 repo 的交代。現在改跟著你在每段對話送出的第一則訊息帶入；hook 照常執行的環境不會重複帶入。
+- **Team／Enterprise 登入時，「說完成前先驗證」又有作用：** 同一個守門 mod 也會跳過已安裝 mod 的 Stop hook，Claude 說完成卻沒驗證時從來沒被提醒。現在所有環境都改成在 Claude 回答後，由 ctx-handoff 送出一則提醒訊息，Claude Code 也不再因此顯示「Stop hook error」。設定：`done_check`。
 
 ## [0.8.2] - 2026-10-18
 

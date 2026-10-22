@@ -114,9 +114,9 @@ export const doneCheckText = (checkFailed = false) =>
     ? `${tag} 你說完成了，但這一輪改檔後的測試或檢查沒有通過。請修好問題並重新跑過測試或檢查，在回覆附上結果；若無法修好或與這次改動無關，請在回覆誠實說明失敗原因，不要直接說完成。`
     : `${tag} 你說完成了，但這一輪改了檔案之後沒有跑任何測試或檢查。請跑和這次改動相關的測試或檢查，在回覆附上跑了什麼、結果如何；沒辦法驗證的，說明哪些沒驗證、為什麼，不要說完成。`
 
-// 回合結束時要不要擋下停止、請模型先驗證。每個回合最多一次；stopHookActive＝這次停止已經被別的 hook 擋過一次
-export function doneCheck(work: Work, message: string | undefined, stopHookActive: boolean): string | undefined {
-  if (work.reminded || stopHookActive) return undefined
+// 回合結束時要不要請模型先驗證：回傳提醒文字。每段工作最多一次（reminded 留到下一則人類訊息）
+export function doneCheck(work: Work, message: string | undefined): string | undefined {
+  if (work.reminded) return undefined
   if (work.lastEdit === 0 || (work.lastCheck > work.lastEdit && !work.checkFailed)) return undefined
   if (!claimsDone(message)) return undefined
   work.reminded = true

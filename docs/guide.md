@@ -46,7 +46,7 @@ The next conversation in that folder is told about it once, within 7 days (cover
 Short messages to Claude, never a block on your tools. All on by default.
 
 - **Repeated failure:** when a tool fails twice in a row for the same reason, Claude is told to find the cause and change approach instead of retrying as is, unless the error looks temporary (a timeout, a page still loading), in which case it waits and tries once more.
-- **"Done" without checking:** when Claude says it's done after editing code this turn with no passing test, build or check since (or after a check failed), it's asked once to verify and show the result, or say honestly what failed or couldn't be verified. Doc and scratchpad edits don't count. Claude Code shows this as "Stop hook feedback" and may label it a Stop hook error; that's the nudge, not a failure.
+- **"Done" without checking:** when Claude says it's done after editing code this turn with no passing test, build or check since (or after a check failed), it's asked once to verify and show the result, or say honestly what failed or couldn't be verified. Doc and scratchpad edits don't count. The nudge arrives right after Claude's answer as a message from the ctx-handoff plugin, and Claude replies to it in a new turn.
 - **Reply language:** when Claude's explanation is mostly not in your language (Traditional or Simplified Chinese, English, Japanese), it's reminded once. Code, commands, paths, links and short lines are ignored, so Chinese with English terms is fine. It also fires when you asked for another language on purpose, such as a translation.
 
 ### Guards
@@ -136,7 +136,7 @@ You won't need these in normal use. If `/handoff` is taken by your own command o
 | `prompt.submit`, `prompt.context` | Holds your message during a handoff; loads notes and the progress note into a new conversation; rereads settings |
 | `$.session.messages`, `$.model.complete`, `$.model.fork` | Reads the conversation to write notes and handoff summaries |
 | `$.fs.read`, `$.fs.write`, `$.fs.exists` | Reads and writes the notes file and its backups; checks whether the project is a git repo, and whether a file a rule was put in exists |
-| `$.prompt.submit`, `$.command.run` | Sends the summary into the new conversation; runs `/clear` |
+| `$.prompt.submit`, `$.command.run` | Sends the summary into the new conversation and the "done" nudge after an answer; runs `/clear` |
 | `$.env.get` | Reads three environment variables, `CLAUDE_CONFIG_DIR`, `HOME` and `USERPROFILE`, only to find your `~/.claude` folder. Nothing needs to be set |
 | `$.settings.read`, `config.set` | Reads Claude Code's `language` setting and this plugin's `pluginConfigs`; notices when you change Claude Code's settings |
 | The rest: `session.start`, `session.end`, `turn.complete`, `classic.Stop`, `command.run`, `$.command.register`, `ui.render`, `$.store`, `$.state`, `$.clock`, `$.ui`, `$.agent.list`, `$.session.*` | Bookkeeping: timers, the `/handoff` command, status line, panel and notices, its own storage, checking that Claude and its subagents are done before a handoff, and the "done" nudge |

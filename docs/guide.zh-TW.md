@@ -46,7 +46,7 @@ ctx-handoff 的完整說明：每個功能怎麼運作、所有設定與指令�
 都是給 Claude 的一句話，不會擋你的工具。預設全開。
 
 - **重複失敗**：同一個工具連續兩次因同樣原因失敗時，請 Claude 先找出原因、換個做法，不要原樣重試；看起來是暫時性錯誤（逾時、還在載入）就稍等再試一次。
-- **說完成卻沒驗證**：Claude 這一輪改過程式檔、之後沒跑過通過的測試、建置或檢查（或跑了但失敗）就說完成時，請它先驗證一次並附上結果，或誠實說明失敗原因與哪些沒辦法驗證。只改文件或 scratchpad 暫存檔不算。Claude Code 會把這則顯示成「Stop hook feedback」，也可能標成 Stop hook error；那就是這個提醒，不是出錯。
+- **說完成卻沒驗證**：Claude 這一輪改過程式檔、之後沒跑過通過的測試、建置或檢查（或跑了但失敗）就說完成時，請它先驗證一次並附上結果，或誠實說明失敗原因與哪些沒辦法驗證。只改文件或 scratchpad 暫存檔不算。提醒會在 Claude 回答後，以 ctx-handoff plugin 送出的訊息出現，Claude 接著在新的回合處理。
 - **回覆語言**：Claude 的說明大部分不是你用的語言（繁體中文、簡體中文、英文、日文）時，提醒它一次。程式碼、指令、路徑、連結和很短的句子不算，所以中文夾英文術語沒問題。你刻意要求別的語言時（例如翻譯）也會提醒一次。
 
 ### 守門
@@ -136,7 +136,7 @@ ctx-handoff 的完整說明：每個功能怎麼運作、所有設定與指令�
 | `prompt.submit`、`prompt.context` | 交接時攔下你的訊息；把筆記與進度帶入新對話；重讀設定 |
 | `$.session.messages`、`$.model.complete`、`$.model.fork` | 讀對話來整理筆記、寫交接摘要 |
 | `$.fs.read`、`$.fs.write`、`$.fs.exists` | 讀寫筆記檔與備份；確認專案是不是 git repo、規則放進的檔案是否存在 |
-| `$.prompt.submit`、`$.command.run` | 把摘要送進新對話；執行 `/clear` |
+| `$.prompt.submit`、`$.command.run` | 把摘要送進新對話，以及回答後送出「說完成卻沒驗證」的提醒；執行 `/clear` |
 | `$.env.get` | 讀三個環境變數 `CLAUDE_CONFIG_DIR`、`HOME`、`USERPROFILE`，只用來找到你的 `~/.claude` 資料夾，不需要另外設定 |
 | `$.settings.read`、`config.set` | 讀 Claude Code 的 `language` 設定與這個 plugin 的 `pluginConfigs`；你改 Claude Code 的設定時跟著更新 |
 | 其餘：`session.start`、`session.end`、`turn.complete`、`classic.Stop`、`command.run`、`$.command.register`、`ui.render`、`$.store`、`$.state`、`$.clock`、`$.ui`、`$.agent.list`、`$.session.*` | 日常運作：計時、`/handoff` 指令、狀態列、面板與提示、自己的儲存空間、交接前確認 Claude 和子代理都做完了，以及「說完成卻沒驗證」的提醒 |

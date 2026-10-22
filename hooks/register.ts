@@ -1279,13 +1279,13 @@ async function watchReply($: EngineInterface, r: { answer: string; toolUses: rea
   } catch {}
 }
 
-// 回合結束時說完成了，但這一輪改檔之後沒有跑任何測試或檢查：回傳要擋下停止的理由（每回合最多一次）。
-// 紀錄用完就清；擋下的那次保留 reminded，之後同一回合的停止不再擋。使用者中斷的回合 Stop 不會觸發，
-// 紀錄由 turn.complete（isAborted）與下一則人類訊息清掉
-function doneReason(e: { stop_hook_active?: boolean; last_assistant_message?: string }): string | undefined {
+// 回合結束時說完成了，但這一輪改檔之後沒有跑任何測試或檢查：回傳要補送的提醒（每段工作最多一次）。
+// 紀錄用完就清；提醒的那次保留 reminded，補送的提醒開出的回合結束時不再提醒。
+// 被中斷的回合由 turn.complete（isAborted）清掉，下一則人類訊息也會清掉
+function doneReason(answer: string): string | undefined {
   try {
     if (cfg.doneCheck) {
-      const reason = doneCheck(rt.work, e.last_assistant_message, e.stop_hook_active === true)
+      const reason = doneCheck(rt.work, answer)
       if (reason) return reason
     }
   } catch {}
@@ -1425,6 +1425,16 @@ export const register: Register = on => {
     // 被中斷的回合沒有 Stop：清掉這一輪的改檔紀錄，免得算到下一輪
     if (e.agentId === undefined && e.isAborted) rt.work = freshWork()
     if (e.agentId === undefined) rt.activity += 1
+    // 說完成了卻沒驗證：補送一則提醒，模型在新的回合驗證。不用 classic.Stop 的 block：
+    // 內建守門 mod 在場時 classic.* 不會跑（見 CLAUDE.md 平台事實）。交接中不送，摘要已記下現況
+    if (e.agentId === undefined && e.reason === 'answer' && !rt.busy) {
+      const reason = doneReason(e.answer)
+      if (reason !== undefined) {
+        $.ui.log(t().loops.doneLog)
+        // 送不進去只是少一次提醒
+        void $.prompt.submit({ text: reason }).catch(() => {})
+      }
+    }
     if (e.agentId !== undefined || rt.busy) return out
     // 別的 session 可能改了經驗檔或守門：每個回合結束重算一次面板快照（面板沒開時只讀一個 state）
     await refreshPanel($)
@@ -1456,12 +1466,6 @@ export const register: Register = on => {
     const out = await next(e)
     // 別的 Stop hook 要求繼續：回合其實沒結束，等它真正停下的那次 Stop 再判斷
     if (out.block !== undefined) return out
-    // 說完成了卻沒驗證：擋下這次停止，回合還沒結束，不判斷交接
-    const reason = e.agent_id === undefined ? doneReason(e) : undefined
-    if (reason !== undefined) {
-      $.ui.log(t().loops.doneLog)
-      return { ...out, block: reason }
-    }
     try {
       await onStop($, e)
     } catch (err) {

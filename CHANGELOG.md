@@ -15,6 +15,7 @@ All notable changes to ctx-handoff. The format follows [Keep a Changelog](https:
 ### Fixed
 
 - **Notes reach new conversations again on Team and Enterprise logins:** since Claude Code 2.1.304, the built-in guard `cc-plugin-sec-default`, which loads with a Team or Enterprise login or managed settings, skips installed mods' `prompt.context` hook, so new conversations got no notes, progress note, or promotion asks. They now come with the first message you send in each conversation; where the hook still runs, nothing is sent twice.
+- **The "done" check works again on Team and Enterprise logins:** the same guard skips installed mods' Stop hook, so Claude was never asked to verify after saying it was done. The nudge now arrives as a message from ctx-handoff right after Claude's answer, everywhere, and Claude Code no longer shows a "Stop hook error" for it. Setting: `done_check`.
 
 ## [0.8.2] - 2026-10-18
 

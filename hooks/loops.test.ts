@@ -1,8 +1,10 @@
 // 防呆提醒：同樣的失敗連續兩次、說完成了卻沒驗證
 import { expect, test } from 'claude-code/testing'
+import type { Engine } from 'claude-code/testing'
 import { claimsDone, doneCheck, failureSignature, freshWork, isCheckCommand, noteCall, trackFailure } from './loops'
 import type { Streak, Work } from './loops'
 import { cmd, ctl, say, stop, world } from './test-world'
+import type { World } from './test-world'
 
 const fail = (text: string) => ({ isError: true as const, result: text, text })
 const NUDGE = '連續兩次因同樣原因失敗'
@@ -59,10 +61,10 @@ test('完成的說法：保守判斷，否定、提問、已說明沒驗證或�
 })
 
 test('完成前驗證：改檔後沒驗證或測試失敗才擋、scratchpad 不誤擋、每回合一次', () => {
-  const run = (setup: (w: Work) => void, msg = '完成了', active = false) => {
+  const run = (setup: (w: Work) => void, msg = '完成了') => {
     const w = freshWork()
     setup(w)
-    return { w, reason: doneCheck(w, msg, active) }
+    return { w, reason: doneCheck(w, msg) }
   }
   const edit = (w: Work) => noteCall(w, 'Edit', { file_path: 'a.ts' }, false)
   const test_ = (w: Work) => noteCall(w, 'Bash', { command: 'npm test' }, false)
@@ -79,19 +81,18 @@ test('完成前驗證：改檔後沒驗證或測試失敗才擋、scratchpad 不
   expect(run(w => { edit(w); test_(w); noteCall(w, 'Bash', { command: 'npm run lint' }, true) }).reason).toContain('測試或檢查沒有通過')
   expect(run(w => { edit(w); noteCall(w, 'Bash', { command: 'npm test' }, true) }, '已經改好了，但測試失敗').reason).toBeUndefined()
   expect(run(w => { edit(w); test_(w); edit(w) }).reason).toContain('沒有跑任何測試或檢查')
-  // 沒說完成、別的 hook 已擋過：不擋
+  // 沒說完成：不擋
   expect(run(edit, '我改了 a.ts，接下來請你看看').reason).toBeUndefined()
-  expect(run(edit, '完成了', true).reason).toBeUndefined()
   // 同一回合第二次不擋
   const w = freshWork()
   edit(w)
-  expect(doneCheck(w, '完成了', false)).toBeDefined()
-  expect(doneCheck(w, '完成了', false)).toBeUndefined()
+  expect(doneCheck(w, '完成了')).toBeDefined()
+  expect(doneCheck(w, '完成了')).toBeUndefined()
   // 其他寫檔工具
   for (const tool of ['Write', 'NotebookEdit', 'MultiEdit']) {
     const x = freshWork()
     noteCall(x, tool, { file_path: 'a.py', notebook_path: 'a.ipynb' }, false)
-    expect(doneCheck(x, 'fixed it', false)).toBeDefined()
+    expect(doneCheck(x, 'fixed it')).toBeDefined()
   }
 })
 
@@ -160,102 +161,124 @@ test('重複失敗：設定走 pluginConfigs 也能關閉', async ($, on) => {
   expect((await $.tool.call({ tool: 'Bash', command: 'x' })).context).toBeUndefined()
 })
 
-// ---------- B：說完成了卻沒驗證（經由 classic.Stop） ----------
+// ---------- B：說完成了卻沒驗證（經由 turn.complete 補送提醒） ----------
 
-const claim = { last_assistant_message: '已經改好了，完成了。' }
+const CLAIM = '已經改好了，完成了。'
+// 主對話（或子代理）的回合結束；補送的提醒沒有 await，多等一拍讓它送到底
+const done = async (w: World, $: Engine, answer = CLAIM, agentId?: string) => {
+  await $.turn.complete({ answer, durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer', ...(agentId ? { agentId } : {}) })
+  await w.clock.advance(0)
+}
+const nudges = (w: World) => w.submits.filter(s => s.includes('你說完成了'))
 
-test('完成前驗證：改了檔案、沒跑任何檢查就說完成，擋下停止並說明原因', async ($, on) => {
+test('完成前驗證：改了檔案、沒跑任何檢查就說完成，回合結束時補送提醒並說明原因', async ($, on) => {
   const w = world(on, 1000)
   await $.tool.call({ tool: 'Edit', file_path: 'a.ts', old_string: 'a', new_string: 'b' })
-  const out = await stop($, claim)
-  expect(out.block).toStartWith('[ctx-handoff] ')
-  expect(out.block).toContain('沒有跑任何測試或檢查')
+  await done(w, $)
+  expect(nudges(w)).toHaveLength(1)
+  expect(nudges(w)[0]).toStartWith('[ctx-handoff] ')
+  expect(nudges(w)[0]).toContain('沒有跑任何測試或檢查')
   expect(w.logs.some(l => l.includes('先驗證'))).toBe(true)
-  // 同一回合再停一次不擋
-  expect((await stop($, claim)).block).toBeUndefined()
+  // 提醒開出的回合結束時又說完成：不再提醒
+  await done(w, $)
+  expect(nudges(w)).toHaveLength(1)
 })
 
-test('完成前驗證：擋下時不做門檻交接（回合還沒結束）', async ($, on) => {
+// 2026-10-22：內建守門 mod cc-plugin-sec-default 讓 classic.* 越過使用者層，靠 classic.Stop 擋下的提醒從沒發生過
+test('完成前驗證：classic.Stop 沒跑（被守門越過）也照樣提醒，Stop 本身不再擋下', async ($, on) => {
+  const w = world(on, 1000)
+  await $.tool.call({ tool: 'Edit', file_path: 'a.ts', old_string: 'a', new_string: 'b' })
+  expect((await stop($, { last_assistant_message: CLAIM })).block).toBeUndefined()
+  await done(w, $)
+  expect(nudges(w)).toHaveLength(1)
+})
+
+test('完成前驗證：門檻交接已開始時不補送提醒', async ($, on) => {
   const w = world(on, 650_000)
   await $.tool.call({ tool: 'Write', file_path: 'a.ts', content: 'x' })
-  expect((await stop($, claim)).block).toBeDefined()
-  await w.clock.advance(0)
-  expect(w.forks.length).toBe(0)
-  // 模型驗證後再停：回合真的結束，照常交接
-  expect((await stop($, { ...claim, stop_hook_active: true })).block).toBeUndefined()
-  await w.clock.advance(0)
+  await stop($)
+  await done(w, $)
   expect(w.forks.length).toBeGreaterThan(0)
+  expect(nudges(w)).toHaveLength(0)
 })
 
-test('完成前驗證：改檔之後跑過測試、沒改檔、沒說完成、只改文件都不擋', async ($, on) => {
-  world(on, 1000)
-  expect((await stop($, claim)).block).toBeUndefined()
+test('完成前驗證：改檔之後跑過測試、沒改檔、沒說完成、只改文件都不提醒', async ($, on) => {
+  const w = world(on, 1000)
+  await done(w, $)
   await $.tool.call({ tool: 'Edit', file_path: 'a.ts', old_string: 'a', new_string: 'b' })
-  expect((await stop($, { last_assistant_message: '我改了 a.ts，請看看' })).block).toBeUndefined()
-  // 上面那次停止結束了這一回合：紀錄清掉，下一回合重算
+  await done(w, $, '我改了 a.ts，請看看')
+  // 上面那個回合結束了：紀錄清掉，下一回合重算
   await $.tool.call({ tool: 'Edit', file_path: 'a.ts', old_string: 'a', new_string: 'b' })
   await $.tool.call({ tool: 'Bash', command: 'npm test' })
-  expect((await stop($, claim)).block).toBeUndefined()
+  await done(w, $)
   await $.tool.call({ tool: 'Edit', file_path: 'README.md', old_string: 'a', new_string: 'b' })
-  expect((await stop($, claim)).block).toBeUndefined()
+  await done(w, $)
+  expect(nudges(w)).toHaveLength(0)
 })
 
-test('完成前驗證：改檔失敗或只寫 scratchpad 不算改檔；測試失敗卻直接說完成會擋下，重跑通過才放行', async ($, on) => {
-  world(on, 1000)
+test('完成前驗證：改檔失敗或只寫 scratchpad 不算改檔；測試失敗卻直接說完成會提醒，重跑通過才放行', async ($, on) => {
+  const w = world(on, 1000)
   ctl.toolReply = e => (e.tool === 'Edit' || e.command === 'npm test' ? fail('boom') : undefined)
   await $.tool.call({ tool: 'Edit', file_path: 'a.ts', old_string: 'a', new_string: 'b' })
-  expect((await stop($, claim)).block).toBeUndefined()
+  await done(w, $)
   await $.tool.call({ tool: 'Write', file_path: 'C:/Users/u/AppData/Local/Temp/claude/p/s/scratchpad/clean.json', content: '{}' })
-  expect((await stop($, claim)).block).toBeUndefined()
+  await done(w, $)
+  expect(nudges(w)).toHaveLength(0)
   ctl.toolReply = e => (e.command === 'npm test' ? fail('1 failed') : undefined)
   await $.tool.call({ tool: 'Edit', file_path: 'a.ts', old_string: 'a', new_string: 'b' })
   await $.tool.call({ tool: 'Bash', command: 'npm test' })
-  expect((await stop($, claim)).block).toContain('測試或檢查沒有通過')
-  // 下一輪修好並重跑測試通過後放行
+  await done(w, $)
+  expect(nudges(w)).toHaveLength(1)
+  expect(nudges(w)[0]).toContain('測試或檢查沒有通過')
+  // 提醒開出的回合修好並重跑測試通過後放行
   ctl.toolReply = undefined
   await $.tool.call({ tool: 'Edit', file_path: 'a.ts', old_string: 'a', new_string: 'b' })
   await $.tool.call({ tool: 'Bash', command: 'npm test' })
-  expect((await stop($, claim)).block).toBeUndefined()
+  await done(w, $)
+  expect(nudges(w)).toHaveLength(1)
 })
 
 test('完成前驗證：使用者的新訊息、被中斷的回合都重新算這一輪', async ($, on) => {
-  world(on, 1000)
+  const w = world(on, 1000)
   await $.tool.call({ tool: 'Edit', file_path: 'a.ts', old_string: 'a', new_string: 'b' })
   await say($, '算了，換個問題')
-  expect((await stop($, claim)).block).toBeUndefined()
+  await done(w, $)
   await $.tool.call({ tool: 'Edit', file_path: 'a.ts', old_string: 'a', new_string: 'b' })
   await $.turn.complete({ answer: '', durationMs: 1, isAborted: true, turnId: 't1', reason: 'aborted' })
-  expect((await stop($, claim)).block).toBeUndefined()
+  await done(w, $)
+  expect(nudges(w)).toHaveLength(0)
 })
 
-test('完成前驗證：別的 Stop hook 已經要求繼續時不插手；子代理的停止不看', async ($, on) => {
-  world(on, 1000)
+test('完成前驗證：子代理的回合結束不看', async ($, on) => {
+  const w = world(on, 1000)
   await $.tool.call({ tool: 'Edit', file_path: 'a.ts', old_string: 'a', new_string: 'b' })
-  ctl.stopBlock = '別的 hook 的理由'
-  expect((await stop($, claim)).block).toBe('別的 hook 的理由')
-  ctl.stopBlock = undefined
-  expect((await stop($, { ...claim, agent_id: 'sub1' })).block).toBeUndefined()
-  expect((await stop($, claim)).block).toContain('[ctx-handoff]')
+  await done(w, $, CLAIM, 'sub1')
+  expect(nudges(w)).toHaveLength(0)
+  await done(w, $)
+  expect(nudges(w)).toHaveLength(1)
 })
 
 // 2026-10-08 實機誤判：背景子代理改檔被算進主對話的這一輪，主對話改檔後明明跑過檢查，仍被要求先驗證
 test('完成前驗證：子代理（含背景子代理）的改檔與檢查不算主對話的這一輪', async ($, on) => {
-  world(on, 1000)
+  const w = world(on, 1000)
   await $.tool.call({ tool: 'Edit', file_path: 'a.ts', old_string: 'a', new_string: 'b' })
   await $.tool.call({ tool: 'Bash', command: 'node tools/check.mjs .' })
   await $.tool.call({ tool: 'Edit', file_path: 'b.ts', old_string: 'a', new_string: 'b', agentId: 'bg1' } as never)
-  expect((await stop($, claim)).block).toBeUndefined()
+  await done(w, $)
+  expect(nudges(w)).toHaveLength(0)
   // 子代理跑的檢查也不能替主對話的改檔作證
   await $.tool.call({ tool: 'Edit', file_path: 'a.ts', old_string: 'a', new_string: 'b' })
   await $.tool.call({ tool: 'Bash', command: 'npm test', agentId: 'bg1' } as never)
-  expect((await stop($, claim)).block).toContain('[ctx-handoff]')
+  await done(w, $)
+  expect(nudges(w)).toHaveLength(1)
 })
 
-test('完成前驗證：done_check 關閉時不擋', async ($, on) => {
-  world(on, 1000)
+test('完成前驗證：done_check 關閉時不提醒', async ($, on) => {
+  const w = world(on, 1000)
   ctl.panelSettings.done_check = false
   await $.tool.call({ tool: 'Edit', file_path: 'a.ts', old_string: 'a', new_string: 'b' })
-  expect((await stop($, claim)).block).toBeUndefined()
+  await done(w, $)
+  expect(nudges(w)).toHaveLength(0)
 })
 
 test('防呆提醒：/handoff 狀態顯示兩個開關', async ($, on) => {
