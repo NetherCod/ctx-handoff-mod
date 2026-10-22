@@ -158,6 +158,8 @@ async function makeHandoff($: EngineInterface, kind: Kind, tokens: number | null
   const started = await $.clock.now()
   const task = { sid, phase: 'generating', at: started } satisfies NonNullable<typeof rt.handoffTask>
   rt.handoffTask = task
+  // 離席交接是人不在時的背景動作、不會 /clear，不轉圈（回來看到「正在產生」會以為要清掉對話）
+  if (kind !== 'away') await showHandoffProgress($)
   await refreshPanel($)
   try {
   const r = await forkWithin($, HANDOFF_PROMPT, HANDOFF_TIMEOUT_MS, sid)
@@ -189,7 +191,33 @@ async function makeHandoff($: EngineInterface, kind: Kind, tokens: number | null
   rt.lastHandoff = { text: r.text }
   $.ui.log(t().handoff.savedLog(kind, describeUsage(usage)))
   return r.text
-  } finally { if (rt.handoffTask === task) rt.handoffTask = undefined; await refreshPanel($) }
+  } finally { if (rt.handoffTask === task) rt.handoffTask = undefined; await showHandoffProgress($); await refreshPanel($) }
+}
+
+// handoff 進行中（產生摘要、/clear 並送出）：狀態列轉圈，產生摘要時加上經過秒數，結束就收掉。
+// 照 rt.handoffTask 重畫，階段一換就呼叫一次；快取刷新是離席時的背景動作，不顯示
+const SPINNER = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
+const SPINNER_MS = 250
+async function showHandoffProgress($: EngineInterface) {
+  const now = await $.clock.now()
+  const task = rt.handoffTask
+  const was = rt.spinner
+  rt.spinner?.cancel()
+  rt.spinner = undefined
+  if (task?.phase !== 'generating' && task?.phase !== 'submitting') {
+    // 沒在轉就不動狀態列（可能正顯示 handoff 延後）
+    if (was) $.ui.status(undefined)
+    return
+  }
+  const since = now - task.at
+  let frame = 0
+  const draw = () => {
+    const icon = SPINNER[frame % SPINNER.length] ?? ''
+    $.ui.status(task.phase === 'generating' ? t().status.generating(icon, Math.floor((since + frame * SPINNER_MS) / 1000)) : t().status.submitting(icon))
+    frame += 1
+  }
+  draw()
+  rt.spinner = $.clock.every(SPINNER_MS, draw)
 }
 
 // $.prompt.submit 被別的 hook 丟棄時只回 { drop }、不會丟例外：沒送進對話，當成失敗
@@ -204,6 +232,7 @@ async function clearAndSubmit($: EngineInterface, text: string) {
   const sid = await $.session.id()
   const task = { sid, phase: 'submitting', at: await $.clock.now() } satisfies NonNullable<typeof rt.handoffTask>
   rt.handoffTask = task
+  await showHandoffProgress($)
   await refreshPanel($)
   try {
   const key = pendingKey(sid)
@@ -229,7 +258,7 @@ async function clearAndSubmit($: EngineInterface, text: string) {
   await $.store.delete(key)
   rt.myPending = undefined
   return undefined
-  } finally { if (rt.handoffTask === task) rt.handoffTask = undefined; await refreshPanel($) }
+  } finally { if (rt.handoffTask === task) rt.handoffTask = undefined; await showHandoffProgress($); await refreshPanel($) }
 }
 
 // ---------- 背景整理：位置與流程 ----------
@@ -1262,7 +1291,7 @@ export const register: Register = on => {
         $.ui.log(t().start.registerFailed(String(err2)))
       }
     }
-    // 狀態列只放 handoff 延後訊息，跟著 rt.deferral（熱重載會清掉）：一起清掉重載前留下的文字
+    // 狀態列只放 handoff 延後與進行中，跟著 rt（熱重載會清掉）：一起清掉重載前留下的文字
     try {
       $.ui.status(undefined)
     } catch {}

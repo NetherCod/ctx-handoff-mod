@@ -10,6 +10,7 @@ All notable changes to ctx-handoff. The format follows [Keep a Changelog](https:
 
 - **Panel docks on the right:** `/handoff panel` opens as a full-height side panel beside the conversation in fullscreen terminals 110 columns or wider; elsewhere it opens above the prompt. In the narrow side panel, buttons move under each row so titles keep the full width.
 - **Notes countdown moves from the status line to notices:** the "N more messages until notes update" line no longer takes a status line row all the time. A notice now counts down only in the last 5 messages before an update, and the "updating notes" and "conversation is short" status texts are gone.
+- **Handoff shows that it is still working:** while a handoff summary is being written (about a minute or two) and while the conversation is cleared and the summary sent, the status line shows a spinner and the seconds elapsed. Background handoffs saved while you're away don't show it.
 
 ## [0.8.2] - 2026-10-18
 

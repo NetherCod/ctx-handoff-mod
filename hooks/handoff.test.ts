@@ -255,6 +255,8 @@ test('S1 離席 handoff 產生中：不被 S1 攔下', async ($, on) => {
   ctl.forkGate = () => gate
   await w.clock.advance(55 * 60_000)
   expect(w.forks.length).toBe(1)
+  // 離席交接不轉圈：人不在、也不會 /clear
+  expect(w.statuses.filter(s => s !== undefined)).toEqual([])
   await say($, '人類訊息')
   expect(w.submits).toEqual(['人類訊息'])
   release()
@@ -625,6 +627,27 @@ test('S8 背景 shell 還在跑：不 /clear，狀態看得到原因，只提醒
   await w.clock.advance(0)
   expect(w.commands).toEqual(['clear'])
   expect(w.statuses.at(-1)).toBeUndefined()
+})
+
+test('handoff 進行中：狀態列轉圈並顯示經過秒數，送出時換成 /clear 階段，結束就收掉', async ($, on) => {
+  const w = world(on, 100_000, 1_000_000, { distill: false })
+  let release = () => {}
+  const gate = new Promise<void>(r => { release = r })
+  ctl.handoffGate = () => gate
+  await cmd($, 'now')
+  await w.clock.advance(0)
+  expect(w.statuses.at(-1)).toBe('⠋ 正在產生 handoff… 0 秒')
+  await w.clock.advance(2_000)
+  expect(w.statuses.at(-1)).toBe('⠇ 正在產生 handoff… 2 秒')
+  release()
+  await w.clock.advance(0)
+  expect(w.commands).toEqual(['clear'])
+  expect(w.statuses).toContain('⠋ 正在 /clear 並送出 handoff…')
+  expect(w.statuses.at(-1)).toBeUndefined()
+  // 收掉之後計時器也停了
+  const n = w.statuses.length
+  await w.clock.advance(1_000)
+  expect(w.statuses.length).toBe(n)
 })
 
 test('S8 延後中關掉自動交接：下一次 Stop 收掉狀態列的延後訊息', async ($, on) => {

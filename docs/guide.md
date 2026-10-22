@@ -14,6 +14,7 @@ The summary keeps apart what was verified (tests run, results seen), what was on
 
 - Background work that never ends (a dev server) doesn't block it forever: it hands off anyway 150k tokens past the threshold, and before 90% of the window.
 - Anything you type during a handoff goes to the new conversation with the summary. Attachments can't be held; you're asked to paste them again.
+- Writing the summary takes a minute or two; meanwhile the status line shows a spinner and the seconds elapsed, and clears once it's sent. Handoffs saved in the background while you're away don't show it.
 - `/handoff now` hands off right away; `/handoff dry` shows a summary and its cost without clearing.
 
 ### Cache kept warm while you're away

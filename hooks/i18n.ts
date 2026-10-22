@@ -110,6 +110,8 @@ const zh = {
   // 狀態列
   status: {
     deferred: (parts: string) => `handoff 延後：${parts}`,
+    generating: (frame: string, sec: number) => `${frame} 正在產生 handoff… ${sec} 秒`,
+    submitting: (frame: string) => `${frame} 正在 /clear 並送出 handoff…`,
   },
 
   // /handoff 的整理狀態區塊
@@ -513,6 +515,8 @@ const en: Messages = {
 
   status: {
     deferred: parts => `Handoff delayed: ${parts}`,
+    generating: (frame, sec) => `${frame} Generating handoff… ${sec}s`,
+    submitting: frame => `${frame} Clearing and sending handoff…`,
   },
 
   distillStatus: {

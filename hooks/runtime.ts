@@ -9,6 +9,8 @@ import type { ReplyLang, ReplyState } from './lang'
 export const rt = {
   distillTask: undefined as { sid: string; why: string; at: number } | undefined,
   handoffTask: undefined as { sid: string; phase: 'refresh' | 'generating' | 'submitting'; at: number } | undefined,
+  // handoff 進行中狀態列的轉圈計時器
+  spinner: undefined as Timer | undefined,
   idle: undefined as Timer | undefined,
   refreshes: 0,
   // 互斥：同一時間只處理一個 handoff（不攔訊息）
@@ -59,6 +61,8 @@ export const rt = {
 export function resetRuntime() {
   rt.distillTask = undefined
   rt.handoffTask = undefined
+  rt.spinner?.cancel()
+  rt.spinner = undefined
   rt.idle?.cancel()
   rt.idle = undefined
   rt.refreshes = 0

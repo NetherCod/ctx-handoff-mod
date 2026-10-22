@@ -128,7 +128,8 @@ const gate = () => {
   return { wait: () => wait, release: () => release() }
 }
 
-test('交接 fork 卡住：5 分鐘後放棄並記錄，攔下的訊息送回舊對話，之後不再攔', async ($, on) => {
+// 快轉 5 分鐘要逐格走過狀態列轉圈的計時器（每格都派送一次），比一般測試慢
+test('交接 fork 卡住：5 分鐘後放棄並記錄，攔下的訊息送回舊對話，之後不再攔', { timeoutMs: 30_000 }, async ($, on) => {
   const w = world(on, 650_000, 1_000_000, {}, [], 5)
   ctl.handoffGate = hang
   await stop($)
