@@ -1079,6 +1079,27 @@ async function progressBlock($: EngineInterface) {
   return text
 }
 
+// 每段新對話開頭帶入的內容：經驗、放進專案的交代、守門詢問、進度備忘；家目錄不帶
+async function openingBlocks($: EngineInterface) {
+  if (await isHomeWorkspace($)) return []
+  const file = await notesFile($)
+  const notes = parseNotes(await readNotes($, file))
+  const text = contextText(notes, file, localStamp(await $.clock.now()).slice(0, 10))
+  const promote = await promoteBlock($, notes)
+  const guardAsk = await guardAskBlock($, notes).catch(() => undefined)
+  // 進度備忘出錯不影響經驗與放進專案的交代
+  const progress = await progressBlock($).catch(() => undefined)
+  return [
+    ...(text ? [{ name: 'ctxHandoffProject', text }] : []),
+    ...(promote ? [{ name: 'ctxHandoffPromote', text: promote }] : []),
+    ...(guardAsk ? [{ name: 'ctxHandoffGuardAsk', text: guardAsk }] : []),
+    ...(progress ? [{ name: 'ctxHandoffProgress', text: progress }] : []),
+  ]
+}
+
+// 這段對話的開頭內容由誰帶過：prompt.context，或 prompt.submit（prompt.context 被內建守門 mod 跳過時）
+const openingKey = (sid: string) => `opening:${sid}`
+
 // ---------- 放進專案 ----------
 const promoteKey = async ($: EngineInterface) => `promote:${await projectKey($)}`
 const loadAsked = async ($: EngineInterface) => ((await $.store.get(await promoteKey($))) as Record<string, PromoteAsk> | undefined) ?? {}
@@ -1337,25 +1358,21 @@ export const register: Register = on => {
     return out
   })
 
-  // 每段新對話（含 /clear 之後）開頭帶入這個工作區的經驗；只在開頭一次，不影響之後的快取
+  // 每段新對話（含 /clear 之後）開頭帶入這個工作區的經驗；只在開頭一次，不影響之後的快取。
+  // 內建守門 mod（cc-plugin-sec-default）在場時這個 hook 不會跑，改由 prompt.submit 跟著第一則訊息帶入
   on('prompt.context', async ($, e, next) => {
     const out = await next(e)
     await initLang($)
     try {
-      if (await isHomeWorkspace($)) return out
-      const file = await notesFile($)
-      const notes = parseNotes(await readNotes($, file))
-      const text = contextText(notes, file, localStamp(await $.clock.now()).slice(0, 10))
-      const promote = await promoteBlock($, notes)
-      const guardAsk = await guardAskBlock($, notes).catch(() => undefined)
-      // 進度備忘出錯不影響經驗與放進專案的交代
-      const progress = await progressBlock($).catch(() => undefined)
-      const blocks = [
-        ...(text ? [{ name: 'ctxHandoffProject', text }] : []),
-        ...(promote ? [{ name: 'ctxHandoffPromote', text: promote }] : []),
-        ...(guardAsk ? [{ name: 'ctxHandoffGuardAsk', text: guardAsk }] : []),
-        ...(progress ? [{ name: 'ctxHandoffProgress', text: progress }] : []),
-      ]
+      const key = openingKey(await $.session.id())
+      // 第一則訊息已經由 prompt.submit 帶過：只略過這一次，之後 compaction 重算照常帶入
+      if ((await $.store.get(key)) === 'submit') {
+        await $.store.set(key, 'context')
+        return out
+      }
+      const blocks = await openingBlocks($)
+      await $.store.set(key, 'context')
+      await touchSeen($, key)
       return blocks.length ? { ...out, blocks: [...out.blocks, ...blocks] } : out
     } catch {
       return out
@@ -1509,13 +1526,23 @@ export const register: Register = on => {
       await $.store.delete(key)
       if (e.text !== away.held) msg = { ...e, text: `${away.held}\n\n${e.text}` }
     }
+    // 這段對話的開頭內容還沒帶過（prompt.context 被內建守門 mod 跳過）：跟著第一則訊息帶入。
+    // 送出前先記下：prompt.context 可能在送出途中才算，看到記號就不重複；訊息被丟棄就收回記號
+    const openKey = openingKey(sid)
+    const opening = (await $.store.get(openKey)) === undefined ? await openingBlocks($).catch(() => []) : undefined
+    if (opening !== undefined) {
+      await $.store.set(openKey, 'submit')
+      await touchSeen($, openKey)
+    }
     // 背景整理的差異：只有訊息真的進了對話才帶入並清掉
     // 回覆語言提醒也一樣：上一則回答不是目標語言的話，跟著這則訊息帶入
     const pend = rt.pendingNotes.get(sid)
     const reply = peekNext(rt.reply)
-    if (!pend && reply.length === 0) return next(msg)
-    const r = await next({ ...msg, context: [...(msg.context ?? []), ...(pend ? [noteBlock(pend.changes, pend.file)] : []), ...reply] })
-    if ((r as { drop?: string }).drop === undefined) {
+    const extra = [...(opening ?? []).map(b => b.text), ...(pend ? [noteBlock(pend.changes, pend.file)] : []), ...reply]
+    const r = await next(extra.length ? { ...msg, context: [...(msg.context ?? []), ...extra] } : msg)
+    const dropped = (r as { drop?: string }).drop !== undefined
+    if (dropped && opening !== undefined) await $.store.delete(openKey)
+    if (!dropped && (pend || reply.length > 0)) {
       rt.pendingNotes.delete(sid)
       clearNext(rt.reply)
     }

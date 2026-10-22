@@ -1,7 +1,7 @@
 // 放進專案：證實多次的規則與啟用中的守門，交代 AI 寫進 repo；AI 不用回報，背景整理從對話認出放在哪
 import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
-import { actionsReply, cmd, ctl, startSession, NOTES, distillNow, lastOf, pushGuard, say, world } from './test-world'
+import { actionsReply, cmd, ctl, startSession, NOTES, OPENED, distillNow, lastOf, pushGuard, say, world } from './test-world'
 
 const PROMOTE_NOTES = [
   '# ctx-handoff 專案經驗',
@@ -152,7 +152,7 @@ test('放進專案：repo 裡沒有那個檔案、編號不是待放的項目，
 })
 
 test('放進專案：使用者說不要就記「不放」（要附使用者原話），照常帶入、不再交代', async ($, on) => {
-  const w = repoWorld(on)
+  const w = repoWorld(on, { ...OPENED })
   await say($, '斷言筆數那條不要放進 repo')
   ctl.distillReply = actionsReply({ op: 'not_in_project', id: 'R1', quote: '不要放進 repo' })
   await distillNow($)

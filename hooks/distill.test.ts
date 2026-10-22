@@ -1,7 +1,7 @@
 // 背景整理：套用 JSONL 動作、錨點、帶入新對話、壞行與金鑰過濾、工作區經驗檔
 import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
-import { NOTE_TAG, composer, cmd, say, endTurn, stop, NOTES, distillNow, EXISTING, ALPHA, ALPHA_NOTES, repo, lastOf, actionsReply, ctl, world } from './test-world'
+import { NOTE_TAG, OPENED, composer, cmd, say, endTurn, stop, NOTES, distillNow, EXISTING, ALPHA, ALPHA_NOTES, repo, lastOf, actionsReply, ctl, world } from './test-world'
 
 test('整理倒數：剩 5 則以內每則訊息後跳 toast，不佔狀態列；同一則訊息不重跳，整理後重算，關掉整理就不跳', async ($, on) => {
   let turns = 24
@@ -134,7 +134,7 @@ test('沒有經驗檔：新對話開頭不帶入', async ($, on) => {
 })
 
 test('整理期間檔案被手動修改：不套用、不排入，下次重新整理同一段', async ($, on) => {
-  const w = world(on, 100_000, 1_000_000, {}, [], 5)
+  const w = world(on, 100_000, 1_000_000, { ...OPENED }, [], 5)
   w.files.set(NOTES, EXISTING)
   ctl.onComplete = () => { w.files.set(NOTES, `${EXISTING}\n- [user] 使用者剛手動加的\n`) }
   const r = await distillNow($)
@@ -170,7 +170,7 @@ test('設定 distill_every：改成每 10 則就整理，狀態列倒數跟著�
 
 test('重複整理：同一條記憶不會重複寫入，沒有變動就不排入', async ($, on) => {
   let n = 5
-  const w = world(on, 100_000, 1_000_000, {}, [], () => n)
+  const w = world(on, 100_000, 1_000_000, { ...OPENED }, [], () => n)
   await distillNow($)
   n = 9
   ctl.distillReply = actionsReply({ op: 'add_memory', type: 'project', text: '使用者決定交接門檻維持 600k' })

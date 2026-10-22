@@ -1,7 +1,7 @@
 // 交接主流程：門檻、閒置刷新、離席 handoff、交接期間訊息不遺失、背景工作與排程、store 鍵分專案
 import { expect, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
-import { NOTE_TAG, DAY, actionsReply, presentation, composer, cmd, resume, say, startSession, task, cron, endTurn, stop, NOTES, distillNow, ctl, world } from './test-world'
+import { NOTE_TAG, OPENED, DAY, actionsReply, presentation, composer, cmd, resume, say, startSession, task, cron, endTurn, stop, NOTES, distillNow, ctl, world } from './test-world'
 
 test('達 600k：產生 handoff → /clear → 送出', async ($, on) => {
   const w = world(on, 650_000)
@@ -455,7 +455,7 @@ test('S1 交接時已有整理在跑：交接前先讀好最後一段，等那�
 // ---------- S2：差異跟著下一則送進對話的訊息 ----------
 
 test('S2 被攔下的訊息與斜線指令不消耗排入的差異，下一則真正送出的才帶入、再下一則不帶', async ($, on) => {
-  const w = world(on, 100_000, 1_000_000, { 'away:S1': { handoff: 'H' } }, [], 5)
+  const w = world(on, 100_000, 1_000_000, { 'away:S1': { handoff: 'H' }, ...OPENED }, [], 5)
   await distillNow($)
   // 離席 handoff 攔下第一則：不帶入
   await say($, '被攔下的訊息')
@@ -474,7 +474,7 @@ test('S2 被攔下的訊息與斜線指令不消耗排入的差異，下一則�
 })
 
 test('S2 交接前整理不排入差異', async ($, on) => {
-  const w = world(on, 650_000, 1_000_000, {}, [], 5)
+  const w = world(on, 650_000, 1_000_000, { ...OPENED }, [], 5)
   await stop($)
   await w.clock.settle()
   expect(w.files.get(NOTES) ?? '').toContain('600k')

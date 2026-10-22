@@ -203,6 +203,8 @@ export const world = (on: On, tokens: number, window = 1_000_000, store: Record<
 }
 
 export const NOTE_TAG = '[ctx-handoff 專案經驗]'
+// S1 這段對話的開頭內容已由 prompt.context 帶過（沒有內建守門 mod）：第一則訊息不再跟著帶入
+export const OPENED = { 'opening:S1': 'context' }
 export const DAY = 24 * 60 * 60_000
 export const presentation = { isFullscreen: false, columns: 80 }
 export const composer = { kind: 'composer' as const }

@@ -12,6 +12,10 @@ All notable changes to ctx-handoff. The format follows [Keep a Changelog](https:
 - **Notes countdown moves from the status line to notices:** the "N more messages until notes update" line no longer takes a status line row all the time. A notice now counts down only in the last 5 messages before an update, and the "updating notes" and "conversation is short" status texts are gone.
 - **Handoff shows that it is still working:** while a handoff summary is being written (about a minute or two) and while the conversation is cleared and the summary sent, the status line shows a spinner and the seconds elapsed. Background handoffs saved while you're away don't show it.
 
+### Fixed
+
+- **Notes reach new conversations again on Team and Enterprise logins:** since Claude Code 2.1.304, the built-in guard `cc-plugin-sec-default`, which loads with a Team or Enterprise login or managed settings, skips installed mods' `prompt.context` hook, so new conversations got no notes, progress note, or promotion asks. They now come with the first message you send in each conversation; where the hook still runs, nothing is sent twice.
+
 ## [0.8.2] - 2026-10-18
 
 Progress notes now last 7 days so you can pick up after a weekend, the "done" check catches failed test runs instead of only missing ones (and ignores temporary files in `scratchpad/`), and the default idle refresh moves to 50 minutes to stay ahead of Claude Code 2.1.299+'s 54-minute idle compaction.

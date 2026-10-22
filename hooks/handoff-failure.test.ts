@@ -1,6 +1,6 @@
 // 交接的失敗與時間：失敗可見可重送、重試間隔、fork 卡住與逾時、搬移、專案鍵
 import { expect, test } from 'claude-code/testing'
-import { composer, cmd, say, endTurn, stop, NOTES, distillNow, EXISTING, CLAUDE_PROJECTS, ALPHA, ALPHA_NOTES, repo, lastOf, actionsReply, ctl, world } from './test-world'
+import { OPENED, composer, cmd, say, endTurn, stop, NOTES, distillNow, EXISTING, CLAUDE_PROJECTS, ALPHA, ALPHA_NOTES, repo, lastOf, actionsReply, ctl, world } from './test-world'
 
 // ---------- S6：失敗可見、可重送、重試有間隔 ----------
 
@@ -148,7 +148,7 @@ test('交接 fork 卡住：5 分鐘後放棄並記錄，攔下的訊息送回舊
 })
 
 test('交接前整理很慢：對話片段先讀好，handoff 一好就 /clear，不等整理；整理之後照樣寫檔、不排入', async ($, on) => {
-  const w = world(on, 650_000, 1_000_000, {}, [], 5)
+  const w = world(on, 650_000, 1_000_000, { ...OPENED }, [], 5)
   const g = gate()
   ctl.distillGate = g.wait
   await stop($)

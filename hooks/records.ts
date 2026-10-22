@@ -26,7 +26,7 @@ export type DistillError = { at: number; why: string; reason: string }
 
 // 每個 session 一把的鍵（值不改寫）：第一次看到的時間記在 seen，超過 30 天的刪掉
 const PRUNE_MS = 30 * 24 * 60 * 60_000
-const isSessionKey = (k: string) => /^(?:distill|away|last|pendingSubmit|stats:session):[^:]+$/.test(k)
+const isSessionKey = (k: string) => /^(?:distill|away|last|opening|pendingSubmit|stats:session):[^:]+$/.test(k)
 
 // 把還沒記錄的鍵記進 seen（直接改它），回傳是否有變動與該刪的鍵（同時從 seen 移除）
 export function pruneSeen(keys: readonly string[], seen: Record<string, number>, now: number) {
