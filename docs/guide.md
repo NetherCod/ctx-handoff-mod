@@ -18,7 +18,7 @@ The summary keeps apart what was verified (tests run, results seen), what was on
 
 ### Cache kept warm while you're away
 
-After about 55 idle minutes it sends a tiny request so the conversation cache doesn't expire, up to 3 times (about 4 hours). After that it saves a handoff summary but doesn't clear. When you come back, your first message is held and you choose: `/handoff resume` starts a new conversation from the summary, `/handoff continue` stays where you were.
+After about 50 idle minutes it sends a tiny request so the conversation cache doesn't expire (and stays ahead of Claude Code's 54-minute idle compaction on large chats), up to 3 times (about 3.5 hours). After that it saves a handoff summary but doesn't clear. When you come back, your first message is held and you choose: `/handoff resume` starts a new conversation from the summary, `/handoff continue` stays where you were.
 
 ### Project notes
 
@@ -26,11 +26,11 @@ After about 55 idle minutes it sends a tiny request so the conversation cache do
 
 What you correct or explain is collected into one notes file per project, loaded into each new conversation. It's plain Markdown you can edit: `~/.claude/projects/<project path>/memory/ctx-handoff.md`.
 
-- **Memories:** preferences (including how you like to work and be talked to), corrections, decisions with their reasons, facts and locations. Decisions that only matter for the task at hand go to the progress note instead, and anything already in your CLAUDE.md files isn't repeated. Preferences and corrections load in full, and only when they match something you actually said. Facts and locations load as titles; Claude reads the rest when it needs it. Facts unconfirmed for 30 days are archived (not loaded, not deleted). Memories you delete (in the panel, with `tools/notes.mjs` or by editing the file) are remembered for 90 days, and distill won't add them back unless you bring them up again.
+- **Memories:** preferences (including how you like to work and be talked to), corrections, decisions with their reasons, facts and locations. Decisions that only matter for the task at hand go to the progress note instead, and anything already in your CLAUDE.md files isn't repeated. Preferences and corrections from the last 14 days or confirmed more than once load in full (and only when they match something you actually said); older one-off items and facts/locations load as titles so Claude can read the rest when it needs it. Facts and one-off corrections unconfirmed for 30 days are archived (not loaded, not deleted). Conversations started directly in your home folder don't auto-update or auto-load project notes, so unrelated throwaway chats don't pile into one file. Memories you delete (in the panel, with `tools/notes.mjs` or by editing the file) are remembered for 90 days, and distill won't add them back unless you bring them up again.
 - **Rules:** practices that keep coming up, such as "use forward slashes in Bash paths (3 times)". The count is how many times you had to say it: Claude simply following a rule doesn't add to it. Loaded once seen twice.
 - **Procedures:** multi-step routines you had Claude repeat, such as "release: bump the version → changelog → tag → GitHub release". Not loaded, to keep the context small.
 
-The notes update every 30 of your messages, after 55 idle minutes, before a handoff, or on `/handoff distill`. Only the new part of the conversation is sent, to Sonnet 5.5 at low effort; a short update takes about 1,200 tokens. Conversations under 30k tokens are skipped. Anything that looks like a key or password is dropped. The status line counts down ("18 more messages until notes update").
+The notes update every 30 of your messages, after 50 idle minutes, before a handoff, or on `/handoff distill`. Only the new part of the conversation is sent, to Sonnet 5.5 at low effort; a short update takes about 1,200 tokens. Conversations under 30k tokens are skipped. Anything that looks like a key or password is dropped. The status line counts down ("18 more messages until notes update").
 
 **Into your repo after 3 times.** When a rule has come up 3 times (or a guard is on), the next conversation in a git repo asks Claude, after it finishes what you asked, to put it where your project keeps its rules: CLAUDE.md, AGENTS.md or an existing hook. A procedure that came up 3 times becomes a project skill, `.claude/skills/<name>/SKILL.md`. Claude checks for duplicates, doesn't commit, and tells you in one line what it added and where, so it shows up in your usual diff. Claude doesn't have to report anything: the next notes update sees the change in the conversation and checks the file exists. If that conversation ends before it's done, a later one is asked. From then on the repo holds it, for every machine and tool, and ctx-handoff stops loading its own copy. Say no and it's undone and not asked again.
 
@@ -38,14 +38,14 @@ The notes update every 30 of your messages, after 55 idle minutes, before a hand
 
 If you `/clear` yourself, Claude Code crashes, or you just open a new conversation, the new one doesn't know where the last one stopped. Each notes update therefore also keeps a short progress note for the folder: the task, whether it's done, in progress or blocked, the last check that passed, the next step, decisions that only matter until this task is done, and the key files. It rides in the same request as the notes.
 
-The next conversation in that folder is told about it once, within 24 hours: "the last conversation (2 hours ago) stopped at…". If you carry on, Claude starts from there; if you're doing something else, it ignores it. Conversations that were handed off automatically don't get it, since the summary already covers them.
+The next conversation in that folder is told about it once, within 7 days (covering weekends): "the last conversation (2 hours ago) stopped at…". If you carry on, Claude starts from there; if you're doing something else, it ignores it. Conversations that were handed off automatically don't get it, since the summary already covers them.
 
 ### Nudges
 
 Short messages to Claude, never a block on your tools. All on by default.
 
 - **Repeated failure:** when a tool fails twice in a row for the same reason, Claude is told to find the cause and change approach instead of retrying as is, unless the error looks temporary (a timeout, a page still loading), in which case it waits and tries once more.
-- **"Done" without checking:** when Claude says it's done after editing code this turn with no test, build or check since, it's asked once to verify and show the result, or say what it couldn't verify. Doc edits don't count. Claude Code shows this as "Stop hook feedback" and may label it a Stop hook error; that's the nudge, not a failure.
+- **"Done" without checking:** when Claude says it's done after editing code this turn with no passing test, build or check since (or after a check failed), it's asked once to verify and show the result, or say honestly what failed or couldn't be verified. Doc and scratchpad edits don't count. Claude Code shows this as "Stop hook feedback" and may label it a Stop hook error; that's the nudge, not a failure.
 - **Reply language:** when Claude's explanation is mostly not in your language (Traditional or Simplified Chinese, English, Japanese), it's reminded once. Code, commands, paths, links and short lines are ignored, so Chinese with English terms is fine. It also fires when you asked for another language on purpose, such as a translation.
 
 ### Guards
@@ -54,7 +54,7 @@ A guard is for a rule that writing down didn't fix: one that went into your repo
 
 ### Panel
 
-`/handoff panel` opens a panel with five tabs: guards to approve, memories, rules and procedures, the latest notes update, and settings. In a fullscreen terminal 110 columns or wider it docks on the right, full height; otherwise it opens above the prompt. Drag its edge to change the width. Deleting a note takes two presses and backs up the file first. Click the buttons, or press ctrl+x tab and then 1–5 to switch tabs. Run the command again to close it.
+`/handoff panel` opens a panel. In a fullscreen terminal 110 columns or wider it docks on the right, full height; otherwise it opens above the prompt. Drag its edge to change the width. Its top row lets you pause or resume away work for this session, above five tabs: guards to approve, memories, rules and procedures (the tab label shows both counts), the latest notes update (with session background token usage and recent records), and settings. Deleting a guard, memory, rule or procedure takes two presses (deleting a note backs up the file first). Click the buttons, or press ctrl+x tab and then 1–5 to switch tabs. Run the command again to close it.
 
 <img src="assets/guard.svg" width="900" alt="Animation: a rule in CLAUDE.md that keeps getting broken is drafted into a guard; Claude asks whether to turn it on, you say yes, and the next git push gets a reminder. Beside it, the panel above the prompt steps through its tabs: guards, memory, rules, the last update and settings">
 
@@ -68,7 +68,7 @@ Everything is set on the panel's Settings tab, not in `/config`. Numbers step wi
 | `threshold` | `600000` | Context tokens that trigger a handoff |
 | `window_ratio` | `0.8` | On smaller windows, hand off at `window × ratio` |
 | Keep cache warm | on | Also `/handoff refresh on\|off` |
-| `idle_minutes` | `55` | Idle minutes before each keep-warm request (5–59) |
+| `idle_minutes` | `50` | Idle minutes before each keep-warm request (5–59) |
 | `max_refresh` | `3` | Keep-warm requests per idle period before saving a summary instead |
 | Project notes | on | Also `/handoff distill on\|off` |
 | `distill_every` | `30` | Your messages between notes updates (5–200) |
@@ -102,7 +102,8 @@ You won't need these in normal use. If `/handoff` is taken by your own command o
 | `/handoff dry` | Show a handoff summary and its cost, without clearing |
 | `/handoff distill` | Update the project notes now |
 | `/handoff resume` / `continue` | After being away: start fresh from the summary, or stay |
-| `/handoff resend` | Send the handoff summary again if it didn't arrive |
+| `/handoff resend [source-session-id]` | Send an undelivered summary again; specify its source session after a restart, in the same workspace |
+| `/handoff away pause\|resume` | Pause away work for this session or restart its idle timer now; notes updates keep running |
 | `/handoff refresh on\|off`, `distill on\|off` | Turn cache keeping or project notes on or off |
 | `/handoff guard` | List guards; `suggest` drafts new ones, `on\|off\|drop N` approves, turns off or deletes one, `mode N deny\|remind` switches between blocking and reminding |
 
@@ -155,7 +156,7 @@ Mods load in most places Claude Code runs, but only the terminal and the Desktop
 
 ## Limitations
 
-- **On a 5-minute cache, turn cache keeping off.** API key, Bedrock and Vertex users, and subscribers who've moved onto usage credits, get a 5-minute cache, so a refresh at 55 minutes rewrites the whole cache. Run `/handoff refresh off`; this isn't detected automatically.
+- **On a 5-minute cache, turn cache keeping off.** API key, Bedrock and Vertex users, and subscribers who've moved onto usage credits, get a 5-minute cache, so a refresh at 50 minutes rewrites the whole cache. Run `/handoff refresh off`; this isn't detected automatically.
 - **Notes follow the folder you start in.** Work on another project from your home folder is noted under your home folder. Notes aren't shared across projects.
 - **The progress note is only as fresh as the last notes update.** After a short chat or a crash it may be missing or a few messages behind; run `/handoff distill` before `/clear` if you want it exact. Two conversations open in the same folder see each other's note.
 - **Other sessions pick up a settings change on their next message,** not at once.
@@ -169,7 +170,7 @@ Start with `/handoff`: it shows context use, what's on, and the latest error fro
 |---|---|
 | `/handoff` isn't a command | The mod isn't loaded: check `claude plugin list` and your Claude Code version; for a clone, use an absolute path. If you have your own `/handoff`, use `/ctx-handoff`. |
 | Something odd and you suspect a mod | Start with `claude --safe-mode` and see whether it goes away. |
-| The new conversation didn't get the summary | `/handoff resend`. |
+| The new conversation didn't get the summary | `/handoff resend`. After a restart, use `/handoff resend <source-session-id>` from the failure message. Only records with a matching workspace source can be resent. |
 | Notes never update | Conversations under 30k tokens are skipped. Run `/handoff distill` and look for an error in `/handoff`. |
 | A command gives no answer | Run `/handoff` for the latest error, then [open an issue](https://github.com/cablate/ctx-handoff-mod/issues/new/choose) with its output. |
 

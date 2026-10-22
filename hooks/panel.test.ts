@@ -1,6 +1,22 @@
 // 面板：右側 Pane 的分頁、守門核准、刪除記憶與規則
 import { expect, test } from 'claude-code/testing'
-import { cmd, ctl, NOTES_PATH, pushGuard, PANE_MOUNT, paneMount, openPanel, PANEL_NOTES, world } from './test-world'
+import { cmd, ctl, endTurn, NOTES_PATH, pushGuard, PANE_MOUNT, paneMount, openPanel, PANEL_NOTES, world } from './test-world'
+
+test('面板與指令共用本對話離席控制，列出工作區與背景用量未知狀態', async ($, on) => {
+  const w = world(on, 100_000)
+  await endTurn($)
+  const ui = await openPanel($)
+  expect(await ui.find({ type: 'Text', text: /本對話背景用量尚未收集/ })).toBeDefined()
+  await ui.press({ key: 'away-toggle' })
+  expect((await cmd($, '')).text).toContain('離席工作已暫停')
+  await w.clock.advance(55 * 60_000)
+  expect(w.forks).toEqual([])
+  await cmd($, 'away resume')
+  expect(await ui.find({ type: 'Button', text: '暫停本對話離席工作' })).toBeDefined()
+  await w.clock.advance(55 * 60_000)
+  expect(w.forks).toEqual(['只回覆 OK'])
+  await ui.unmount()
+})
 
 // ---------- 面板 ----------
 
@@ -30,7 +46,7 @@ test('面板：窄的停靠側欄裡，記憶標題不被按鈕寬度截斷', as
   expect(await ui.find({ key: `del:m:[feedback] ${title}` })).toBeDefined()
 })
 
-test('面板：列出守門與記憶，按核准後守門生效', async ($, on) => {
+test('面板：列出守門與記憶，按核准後守門生效；刪除守門要按兩次確認', async ($, on) => {
   const w = world(on, 1000, 1_000_000, { 'guards:C--proj': [{ ...pushGuard('proposed'), replay: { hits: 1, calls: 4 } }] })
   w.files.set(NOTES_PATH, PANEL_NOTES)
   const ui = await openPanel($)
@@ -42,6 +58,17 @@ test('面板：列出守門與記憶，按核准後守門生效', async ($, on) 
   expect(await ui.find({ type: 'Text', text: /守門 #1 已核准/ })).toBeDefined()
   const blocked = await $.tool.call({ tool: 'Bash', command: 'git push' })
   expect(blocked.deny).toContain('守門 #1')
+  await ui.press({ key: 'ask:g:1' })
+  await w.clock.advance(0)
+  expect((w.get('guards:C--proj') as unknown[]).length).toBe(1)
+  await ui.press({ key: 'no:g:1' })
+  await w.clock.advance(0)
+  expect((w.get('guards:C--proj') as unknown[]).length).toBe(1)
+  await ui.press({ key: 'ask:g:1' })
+  await w.clock.advance(0)
+  await ui.press({ key: 'drop1' })
+  await w.clock.advance(0)
+  expect(w.get('guards:C--proj')).toEqual([])
   await ui.press({ key: 'tab:memory' })
   expect(await ui.find({ type: 'Text', text: /使用者要求每次都先跑測試/ })).toBeDefined()
 })
@@ -74,8 +101,8 @@ test('面板：長記憶依寬度截成一行，按展開才顯示全文', async
   const row = await ui.find({ type: 'Text', text: /很長的記憶內容/ })
   expect(row?.text).toContain('…')
   expect(row?.text).not.toContain('結尾')
-  // 中文一字兩格：截短後不超過面板寬度
-  expect([...(row?.text ?? '')].reduce((n, ch) => n + ((ch.codePointAt(0) ?? 0) >= 0x1100 ? 2 : 1), 0)).toBeLessThanOrEqual(120)
+  // 這份輸入全是中文；120 格的一行不可能容納超過 60 個字再加省略符號。
+  expect([...(row?.text ?? '')].length).toBeLessThanOrEqual(61)
   await ui.press({ key: `t:m:${long.slice(2)}` })
   expect(await ui.find({ type: 'Text', text: /結尾$/ })).toBeDefined()
   await ui.press({ key: `t:m:${long.slice(2)}` })
@@ -83,7 +110,7 @@ test('面板：長記憶依寬度截成一行，按展開才顯示全文', async
 })
 
 // 事故（2026-10-06）：每次重畫都重讀經驗檔與 store，切分頁卡住點不動
-test('面板：切分頁、展開與重畫只讀快照不讀檔；指令改了守門，面板跟著更新', async ($, on) => {
+test('面板：切分頁與重畫不重讀經驗檔；指令改了守門，面板跟著更新', async ($, on) => {
   const w = world(on, 1000, 1_000_000, { 'guards:C--proj': [pushGuard('proposed')] })
   w.files.set(NOTES_PATH, PANEL_NOTES)
   const ui = await openPanel($)

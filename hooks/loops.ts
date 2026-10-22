@@ -55,13 +55,14 @@ export function trackFailure(streaks: Map<string, Streak>, key: string, tool: st
 
 // ---------- B：說完成了，但改檔之後沒有任何驗證 ----------
 
-// 這一輪的工作紀錄：seq 是已完成的工具呼叫序號；lastEdit／lastCheck 是最後一次改檔／驗證的序號（0＝沒有）
-export type Work = { seq: number; lastEdit: number; lastCheck: number; reminded: boolean }
-export const freshWork = (): Work => ({ seq: 0, lastEdit: 0, lastCheck: 0, reminded: false })
+// 這一輪的工作紀錄：seq 是已完成的工具呼叫序號；lastEdit／lastCheck 是最後一次改檔／驗證通過的序號（0＝沒有）；checkFailed 是最後一次驗證是否失敗
+export type Work = { seq: number; lastEdit: number; lastCheck: number; checkFailed: boolean; reminded: boolean }
+export const freshWork = (): Work => ({ seq: 0, lastEdit: 0, lastCheck: 0, checkFailed: false, reminded: false })
 
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit'])
-// 說明文件的修改不需要跑測試
+// 說明文件與 scratchpad 暫存檔的修改不需要跑專案測試
 const DOC_FILE = /\.(md|mdx|txt|rst|adoc)$/i
+const SCRATCH_PATH = /(?:^|[\\/])scratchpad[\\/]/i
 // 這些指令只是看或搬東西，不算驗證
 const NOT_RUNNING = new Set(['ls', 'cat', 'echo', 'grep', 'rg', 'find', 'head', 'tail', 'git', 'cd', 'mkdir', 'rm', 'cp', 'mv', 'sed', 'awk', 'type', 'wc', 'diff', 'open', 'pwd', 'which', 'printf'])
 const CHECK_WORDS = /\b(tests?|pytest|unittest|jest|vitest|mocha|rspec|phpunit|tsc|typecheck|lint|eslint|biome|ruff|mypy|pyright|flake8|clippy|check|build|compile|verify|validate|vet)\b/i
@@ -77,23 +78,29 @@ export function isCheckCommand(command: string | undefined): boolean {
 
 type CallInput = Record<string, unknown>
 
-// 記下一個「已經執行完」的工具呼叫。failed：工具回報錯誤（改檔失敗不算改檔；測試跑失敗仍算跑過）
+// 記下一個「已經執行完」的工具呼叫。failed：工具回報錯誤（改檔失敗不算改檔；測試跑失敗記 checkFailed，不算驗證通過）
 export function noteCall(work: Work, tool: string, input: CallInput, failed: boolean) {
   work.seq += 1
   if (EDIT_TOOLS.has(tool)) {
     if (failed) return
     const file = [input.file_path, input.notebook_path, input.path].find((p): p is string => typeof p === 'string')
-    if (file && DOC_FILE.test(file)) return
+    if (file && (DOC_FILE.test(file) || SCRATCH_PATH.test(file))) return
     work.lastEdit = work.seq
+    work.checkFailed = false
   } else if ((tool === 'Bash' || tool === 'PowerShell') && typeof input.command === 'string' && isCheckCommand(input.command)) {
-    work.lastCheck = work.seq
+    if (failed) {
+      work.checkFailed = true
+    } else {
+      work.lastCheck = work.seq
+      work.checkFailed = false
+    }
   }
 }
 
 // 「完成了」的說法：只看開頭與結尾，排除否定（未／沒／不／尚）與提問
 const CLAIM = /(?<![未沒不尚])(完成了|已完成|已經完成|做好了|都好了|已修好|修好了|已經修好|搞定了?|全部完成|都處理好了)|\b(all done|all set|i(?:'ve| have) (?:finished|completed|fixed)|(?:is|are|now|it's) (?:done|fixed|complete(?:d)?|finished)|fixed it|everything (?:is )?(?:done|working|fixed))\b/i
-// 已經誠實說明沒驗證的，不再提醒
-const HONEST = /沒有?(?:跑|執行|做)?(?:驗證|測試|檢查)|未(?:經)?(?:驗證|測試)|無法(?:驗證|測試)|沒辦法(?:驗證|測試)|not (?:been )?(?:tested|verified)|couldn't (?:run|verify|test)|could not (?:run|verify|test)|unable to (?:run|verify|test)|haven't (?:run|tested|verified)/i
+// 已經誠實說明沒驗證或測試失敗的，不再提醒
+const HONEST = /沒有?(?:跑|執行|做)?(?:驗證|測試|檢查)|未(?:經)?(?:驗證|測試)|無法(?:驗證|測試)|沒辦法(?:驗證|測試)|(?:測試|驗證|檢查|編譯)(?:失敗|未通過|未過|沒過)|not (?:been )?(?:tested|verified)|couldn't (?:run|verify|test)|could not (?:run|verify|test)|unable to (?:run|verify|test)|haven't (?:run|tested|verified)|(?:tests?|checks?|build) failed/i
 
 export function claimsDone(message: string | undefined): boolean {
   const text = (message ?? '').trim()
@@ -102,14 +109,16 @@ export function claimsDone(message: string | undefined): boolean {
   return CLAIM.test(ends) && !HONEST.test(ends)
 }
 
-export const doneCheckText = () =>
-  `${tag} 你說完成了，但這一輪改了檔案之後沒有跑任何測試或檢查。請跑和這次改動相關的測試或檢查，在回覆附上跑了什麼、結果如何；沒辦法驗證的，說明哪些沒驗證、為什麼，不要說完成。`
+export const doneCheckText = (checkFailed = false) =>
+  checkFailed
+    ? `${tag} 你說完成了，但這一輪改檔後的測試或檢查沒有通過。請修好問題並重新跑過測試或檢查，在回覆附上結果；若無法修好或與這次改動無關，請在回覆誠實說明失敗原因，不要直接說完成。`
+    : `${tag} 你說完成了，但這一輪改了檔案之後沒有跑任何測試或檢查。請跑和這次改動相關的測試或檢查，在回覆附上跑了什麼、結果如何；沒辦法驗證的，說明哪些沒驗證、為什麼，不要說完成。`
 
 // 回合結束時要不要擋下停止、請模型先驗證。每個回合最多一次；stopHookActive＝這次停止已經被別的 hook 擋過一次
 export function doneCheck(work: Work, message: string | undefined, stopHookActive: boolean): string | undefined {
   if (work.reminded || stopHookActive) return undefined
-  if (work.lastEdit === 0 || work.lastCheck > work.lastEdit) return undefined
+  if (work.lastEdit === 0 || (work.lastCheck > work.lastEdit && !work.checkFailed)) return undefined
   if (!claimsDone(message)) return undefined
   work.reminded = true
-  return doneCheckText()
+  return doneCheckText(work.checkFailed)
 }

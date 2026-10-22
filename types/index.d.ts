@@ -13,6 +13,7 @@ export type PanelGuard = {
 
 // 面板要顯示的資料快照：開面板、按動作、整理寫檔、指令改守門、回合結束時重算；畫面只讀這份，不讀檔
 export type PanelData = {
+  background?: { paused: boolean; lines: string[]; details?: string[] }
   file: string
   guards: PanelGuard[]
   candidates: number
@@ -50,9 +51,10 @@ export type PanelUi = {
 
 // 閒置刷新計時：到期時間（clock 毫秒）與這次閒置已刷新幾次；熱重載後依它重排計時器
 export type IdleState = { due: number; refreshes: number }
+export type AwayControl = { sid: string; paused: boolean }
 
 declare module 'claude-code' {
   interface PluginState {
-    'ctx-handoff': { panelUi: PanelUi; panelData: PanelData | null; idle: IdleState | null }
+    'ctx-handoff': { panelUi: PanelUi; panelData: PanelData | null; idle: IdleState | null; awayControl: AwayControl | null }
   }
 }

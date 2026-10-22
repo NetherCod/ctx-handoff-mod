@@ -2,8 +2,11 @@
 import { t } from './i18n'
 import { PROGRESS_TOTAL_MAX, isProgressState, progressSize } from './progress'
 import type { ProgressFields } from './progress'
-import { EVIDENCE_KEEP, NOTE_TAG, PROJECT_DECLINED, STALE_DAYS, inProject, inProjectText, isArchived, memHead, memOneLine, procBody, procOneLine, procRest, procSteps, procWhen, projectOf, ruleText, setProject, tag } from './notes'
+import { EVIDENCE_KEEP, NOTE_TAG, PROJECT_DECLINED, PROJECT_IN, STALE_DAYS, inProject, inProjectText, isArchived, memHead, memOneLine, procBody, procOneLine, procRest, procSteps, procWhen, projectOf, ruleText, setProject, tag } from './notes'
 import type { Change, Memory, Notes, Procedure, Rule } from './notes'
+import type { Guard } from './guards'
+import { isBuried } from './tombstones'
+import type { Tombstones } from './tombstones'
 
 // 記憶給人看：標題是一句結論，做法／理由各一句；根據給整理模型判斷用，不帶入新對話
 const TITLE_MAX = 60
@@ -157,7 +160,7 @@ export const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.replac
 
 // 使用者原話：以 … 分段，每段（去掉空白後）都要出現在使用者訊息裡
 export const squash = (s: string) => s.replace(/\s+/g, '')
-function isQuoted(quote: string, userText: string) {
+export function isQuoted(quote: string, userText: string) {
   const parts = quote.split(/…|\.\.\./).map(squash).filter(p => p.length >= 2)
   return parts.length > 0 && parts.every(p => userText.includes(p))
 }
@@ -348,7 +351,7 @@ export function parseActions(text: string, notes: Notes, userText = '', pending:
   }
   const start = text.indexOf(ACTIONS_START)
   if (start === -1) {
-    if (text.trim()) reject(t().reject.noMarker(ACTIONS_START))
+    reject(t().reject.noMarker(ACTIONS_START))
     return { actions, rejected }
   }
   let body = text.slice(start + ACTIONS_START.length)
@@ -366,6 +369,7 @@ export function parseActions(text: string, notes: Notes, userText = '', pending:
     if (typeof a === 'string') reject(a, line)
     else actions.push(a)
   }
+  if (end === -1 && actions.length === 0 && rejected.count === 0) reject(t().reject.noMarker(ACTIONS_END))
   return { actions, rejected }
 }
 
@@ -391,13 +395,76 @@ export function latestProgress(actions: Action[]): ProgressFields | undefined {
   return a && { task: a.task, state: a.state, ...(a.verified ? { verified: a.verified } : {}), ...(a.next ? { next: a.next } : {}), ...(a.decisions?.length ? { decisions: a.decisions } : {}), files: a.files }
 }
 
+export function prepareDistillActions(input: {
+  text: string
+  notes: Notes
+  userText: string
+  candidates: string[]
+  drafts: string[]
+  retry: boolean
+  guards: readonly Pick<Guard, 'id' | 'state' | 'project'>[]
+}) {
+  const completed = new Map<string, string>()
+  const answered = new Map<string, string>()
+  if (input.retry) {
+    for (const [prefix, items] of [['R', input.notes.rules], ['P', input.notes.procedures]] as const) {
+      items.forEach((item, i) => {
+        const state = projectOf(item)?.replace(/（第 \d+ 次時）$/, '')
+        if (state) completed.set(`${prefix}${i + 1}`, state)
+      })
+    }
+    for (const g of input.guards) {
+      if (g.project) completed.set(`G${g.id}`, g.project)
+      if (g.state === 'on' || g.state === 'off') answered.set(`G${g.id}`, g.state)
+    }
+  }
+  const parsed = parseActions(input.text, input.notes, input.userText, [...input.candidates, ...completed.keys()], [...input.drafts, ...answered.keys()])
+  return { ...parsed, completed, answered, retry: input.retry }
+}
+
+export function reconcileDistillActions(input: {
+  prepared: ReturnType<typeof prepareDistillActions>
+  actions: Action[]
+  tombstones: Tombstones
+  currentUserText: string
+  notes: Notes
+  day: string
+  sid: string
+  source: string
+}) {
+  const { completed, answered, rejected, retry } = input.prepared
+  let noops = 0
+  const actions = input.actions.filter(a => {
+    if ((a.op === 'approve_guard' || a.op === 'decline_guard') && answered.has(a.id)) {
+      if (answered.get(a.id) === (a.op === 'approve_guard' ? 'on' : 'off')) noops += 1
+      else addRejected(rejected, t().reject.noId(a.id), JSON.stringify(a))
+      return false
+    }
+    if ((a.op === 'in_project' || a.op === 'not_in_project') && completed.has(a.id)) {
+      if (completed.get(a.id) === (a.op === 'in_project' ? `${PROJECT_IN}${a.where}` : PROJECT_DECLINED)) noops += 1
+      else addRejected(rejected, t().reject.noId(a.id), JSON.stringify(a))
+      return false
+    }
+    if (a.op !== 'add_memory') return true
+    if (retry && input.notes.memory.some(m => m.title === a.title)) { noops += 1; return false }
+    if (!isBuried(input.tombstones, a.title, a.quote !== undefined && isQuoted(a.quote, input.currentUserText))) return true
+    addRejected(rejected, t().reject.buried(a.title), JSON.stringify(a))
+    return false
+  })
+  if (actions.length === 0 && noops === 0 && rejected.count > 0) return { kind: 'unusable', rejected } as const
+  const { notes, changes } = applyActions(actions, input.notes, input.day, input.sid, input.source)
+  const hasEffects = changes.length > 0 || guardPromotions(actions).length > 0 || guardAnswers(actions).length > 0 || latestProgress(actions) !== undefined
+  return { kind: 'usable', actions, rejected, notes, changes, hasEffects } as const
+}
+
 // 依序套用已驗證的動作；刪除先標記成 undefined，編號不會因此位移
 // sid：寫進記憶根據的 session（前 8 碼），需要時回對話檔查全文
-export function applyActions(actions: Action[], n: Notes, day: string, sid = ''): { notes: Notes; changes: Change[] } {
+export function applyActions(actions: Action[], n: Notes, day: string, sid = '', source?: string): { notes: Notes; changes: Change[] } {
   const field = (label: string, value: string) => `- ${label}：${value}`
   const memory = n.memory.map(m => ({ ...m, evidence: [...m.evidence] })) as (Memory | undefined)[]
   const addedMem: Memory[] = []
   const stamp = `${day}${sid ? ` ${sid.slice(0, 8)}` : ''}`
+  const marker = source ? ` [ctx-source:${source}]` : ''
   // 日期由程式補：模型自己在開頭寫的日期去掉，避免重複
   const evidenceOf = (a: MemoryFields) => {
     const evidence = a.evidence?.replace(/^\d{4}-\d{2}-\d{2}\s*[｜|：:]?\s*/, '')
@@ -452,7 +519,7 @@ export function applyActions(actions: Action[], n: Notes, day: string, sid = '')
         added.push({
           name: a.name,
           count: 1,
-          body: [field('規則', a.rule), field('適用', `${a.applies}｜不適用：${a.notApplies}`), field('根據', `${day} ${a.evidence}`)],
+          body: [field('規則', a.rule), field('適用', `${a.applies}｜不適用：${a.notApplies}`), field('根據', `${day} ${a.evidence}${marker}`)],
         })
         changes.push(t().change.addRule(a.name, a.rule))
         break
@@ -460,9 +527,10 @@ export function applyActions(actions: Action[], n: Notes, day: string, sid = '')
       case 'confirm_rule': {
         const r = rules[a.i]
         if (!r) break
+        if (marker && r.body.some(l => l.startsWith('- 根據：') && l.endsWith(marker))) break
         r.count += 1
         const evidence = r.body.filter(l => l.startsWith('- 根據：'))
-        r.body = [...r.body.filter(l => !l.startsWith('- 根據：')), ...[...evidence, field('根據', `${day} ${a.evidence}`)].slice(-EVIDENCE_KEEP)]
+        r.body = [...r.body.filter(l => !l.startsWith('- 根據：')), ...[...evidence, field('根據', `${day} ${a.evidence}${marker}`)].slice(-EVIDENCE_KEEP)]
         changes.push(t().change.confirmRule(r.name, r.count))
         break
       }
@@ -483,16 +551,17 @@ export function applyActions(actions: Action[], n: Notes, day: string, sid = '')
       case 'add_procedure': {
         // 同名流程已存在：略過
         if (n.procedures.some(p => p.name === a.name) || addedProc.some(p => p.name === a.name)) break
-        addedProc.push({ name: a.name, count: 1, body: procBody(a.when, a.steps, [field('根據', `${day} ${a.evidence}`)]) })
+        addedProc.push({ name: a.name, count: 1, body: procBody(a.when, a.steps, [field('根據', `${day} ${a.evidence}${marker}`)]) })
         changes.push(t().change.addProcedure(a.name, a.steps.length))
         break
       }
       case 'confirm_procedure': {
         const p = procedures[a.i]
         if (!p) break
+        if (marker && p.body.some(l => l.startsWith('- 根據：') && l.endsWith(marker))) break
         p.count += 1
         const evidence = p.body.filter(l => l.startsWith('- 根據：'))
-        p.body = [...p.body.filter(l => !l.startsWith('- 根據：')), ...[...evidence, field('根據', `${day} ${a.evidence}`)].slice(-EVIDENCE_KEEP)]
+        p.body = [...p.body.filter(l => !l.startsWith('- 根據：')), ...[...evidence, field('根據', `${day} ${a.evidence}${marker}`)].slice(-EVIDENCE_KEEP)]
         changes.push(t().change.confirmProcedure(p.name, p.count))
         break
       }

@@ -10,6 +10,50 @@ All notable changes to ctx-handoff. The format follows [Keep a Changelog](https:
 
 - **Panel docks on the right:** `/handoff panel` opens as a full-height side panel beside the conversation in fullscreen terminals 110 columns or wider; elsewhere it opens above the prompt. In the narrow side panel, buttons move under each row so titles keep the full width.
 
+## [0.8.2] - 2026-10-18
+
+Progress notes now last 7 days so you can pick up after a weekend, the "done" check catches failed test runs instead of only missing ones (and ignores temporary files in `scratchpad/`), and the default idle refresh moves to 50 minutes to stay ahead of Claude Code 2.1.299+'s 54-minute idle compaction.
+
+### Changed
+
+- **Progress notes last 7 days across weekends:** progress notes used to expire after 24 hours, so Friday's context was gone by Monday morning. As long as no handoff has replaced it, a new conversation within 7 days still gets where you left off (showing "N days ago" past 24 hours). Setting: `resume_hint`.
+- **Default idle refresh moved to 50 minutes:** Claude Code 2.1.299+ automatically compacts 200k+ token conversations after 54 idle minutes. Moving the default from 55 to 50 minutes refreshes your 1-hour cache before auto-compaction runs. Setting: `idle_minutes`.
+
+### Fixed
+
+- **"Done" check catches failed tests and ignores `scratchpad/` files:** previously, running a test that failed still satisfied the check if Claude claimed it was done without mentioning the failure; conversely, writing a temporary file in Claude's `scratchpad/` folder could trigger the check when no project code changed. Failed checks now block unless Claude reports the failure, and `scratchpad/` paths are ignored. Setting: `done_check`.
+
+## [0.8.1] - 2026-10-18
+
+As project notes grow, new conversations now load full details only for recent or repeated preferences—folding older one-off corrections down to their title and archiving them after 30 days to save tokens. Sessions started in your home directory no longer auto-update or load project notes, and idle windows no longer log repeated timeout errors every hour.
+
+### Changed
+
+- **Older one-off notes fold to titles and archive automatically:** preferences and corrections (`user` and `feedback`) from the last 14 days or with 2+ occurrences still load in full; one-off corrections older than 14 days load as a one-line title (Claude can read the file when needed), and one-off corrections untouched for 30 days are archived automatically without manual cleanup.
+- **Sessions started in your home directory skip auto-notes:** opening a terminal in `~` or `%USERPROFILE%` for a quick question isn't a single project, so sessions started there no longer auto-update or auto-load project notes instead of mixing unrelated chats into one file (`/handoff distill` still works manually).
+
+### Fixed
+
+- **Idle windows no longer retry and log timeouts every hour:** previously, if an idle notes update hit an API timeout, every subsequent cache refresh retried the same slice and logged another error. Idle updates now run at most once per idle period, and timeouts while you're away are quietly skipped until you chat again or hand off.
+
+## [0.8.0] - 2026-10-17
+
+You can now pause away work for a single conversation without turning it off everywhere (while project notes keep updating), and see right in the panel how many background tokens this session has used. Under the hood, background notes and handoff recovery are much tougher: failed updates don't skip your conversation, retries never double-count rules, deleted memories can't be brought back by something you said earlier in the same long chat, and an undelivered handoff can be recovered even after restarting Claude Code.
+
+### Added
+
+- **Pause away work for just this session:** if you don't want the current conversation refreshing its cache or saving an away summary when idle, click the button at the top of the panel or run `/handoff away pause` (`/handoff away resume` restarts the timer). Project notes keep updating as usual, and other open or new conversations aren't affected.
+- **Live background status and session token usage:** `/handoff` and the panel now show notes updates and handoff/refresh work in separate slots so you can see what's running, along with the reported background tokens used by this session (requests that time out or return no usage are explicitly marked as unknown, never counted as zero or guessed in dollars).
+- **A tighter, safer panel:** the top bar puts the away status and pause button on one compact line and moves history details into the Last update tab; deleting a guard now takes two presses ("Confirm") just like memories and rules; and when a project has procedures, the Rules tab label shows both rule and procedure counts.
+
+### Fixed
+
+- **Failed notes updates no longer skip your conversation:** if a notes update returns no usable actions or hits a file read error, the checkpoint stays put so the next run retries that slice of the conversation instead of dropping it.
+- **Retrying a partial write never double-counts rules or procedures:** if the notes file was written but saving the checkpoint failed, the next run retries the exact same slice of conversation and recognizes evidence and memories that already landed, so rule and procedure counts aren't incremented twice.
+- **Deleted memories aren't revived by older messages in the same chat:** quote matching for restoring a deleted memory now checks only the new messages since the last notes update, so something you said before deleting the memory won't bring it back on the next update.
+- **Recover undelivered handoffs after a restart:** if sending a handoff fails after `/clear` and you restart Claude Code, you can now run `/handoff resend <source-session-id>` in the same workspace to deliver it safely (the record is kept until delivery succeeds, and records from other workspaces are refused).
+- **Late away results don't overwrite fresh work, and fresh restarts don't spin on idle refresh:** if you come back and keep chatting (or pause away work) while an away summary or idle notes update is still running, the late result is discarded without touching your new idle timer or refresh count; and when a newly restarted or cleared session has nothing to fork yet, idle refresh stops until your next conversation turn ([#7](https://github.com/cablate/ctx-handoff-mod/issues/7)).
+
 ## [0.7.0] - 2026-10-15
 
 Handing off at the threshold is now off by default, so Claude Code's own compact takes over while everything else keeps running. Memories you delete stay deleted, guards your repo already has stop coming back, and handoffs keep who said what.
@@ -144,7 +188,10 @@ Notes stay in the project you started in, and updating them costs far less.
 
 First release: automatic handoff at a context threshold, keeping the cache warm while you're away with a saved handoff after that, and project notes.
 
-[unreleased]: https://github.com/cablate/ctx-handoff-mod/compare/ctx-handoff--v0.7.0...HEAD
+[unreleased]: https://github.com/cablate/ctx-handoff-mod/compare/ctx-handoff--v0.8.2...HEAD
+[0.8.2]: https://github.com/cablate/ctx-handoff-mod/compare/ctx-handoff--v0.8.1...ctx-handoff--v0.8.2
+[0.8.1]: https://github.com/cablate/ctx-handoff-mod/compare/ctx-handoff--v0.8.0...ctx-handoff--v0.8.1
+[0.8.0]: https://github.com/cablate/ctx-handoff-mod/compare/ctx-handoff--v0.7.0...ctx-handoff--v0.8.0
 [0.7.0]: https://github.com/cablate/ctx-handoff-mod/compare/ctx-handoff--v0.6.0...ctx-handoff--v0.7.0
 [0.6.0]: https://github.com/cablate/ctx-handoff-mod/compare/ctx-handoff--v0.5.0...ctx-handoff--v0.6.0
 [0.5.0]: https://github.com/cablate/ctx-handoff-mod/compare/ctx-handoff--v0.4.0...ctx-handoff--v0.5.0

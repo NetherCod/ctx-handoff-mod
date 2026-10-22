@@ -38,7 +38,7 @@
 
 ## 安裝
 
-需要 Claude Code 2.1.287 以上，已測試到 2.1.293。
+需要 Claude Code 2.1.287 以上，已測試到 2.1.302。
 
 ```sh
 claude plugin marketplace add cablate/ctx-handoff-mod
@@ -67,6 +67,10 @@ ctx-handoff 是持續成長的長時間工作工具箱：和 Claude 一起工作
 
 ### 離開時保持快取
 
+閒置約 50 分鐘後送一個很小的請求，讓對話快取不過期（也趕在 Claude Code 對長對話的 54 分鐘閒置自動壓縮之前續命），最多 3 次（約 3.5 小時）；之後會存好交接摘要但不清空，等你回來再選要用摘要開新對話（`/handoff resume`）或留在原對話（`continue`）。
+
+想暫停這個對話的離席刷新與摘要，按面板頂部的按鈕或打 `/handoff away pause`（`resume` 重新計時），背景筆記整理照常，也不影響其他對話。面板與 `/handoff` 同時顯示背景工作狀態，以及這個對話自本次更新起實報的背景 token 用量（不是帳單；已送出的請求無法取消）。
+
 <img src="docs/assets/cache.zh-TW.svg" width="900" alt="動畫：你離開後，快取在 55、110、165 分鐘各刷新一次；之後存好摘要，你回來時選擇接續或留在原對話">
 
 ### 學會你的專案，再交給你的 repo
@@ -74,6 +78,8 @@ ctx-handoff 是持續成長的長時間工作工具箱：和 Claude 一起工作
 <img src="docs/assets/memory.zh-TW.svg" width="900" alt="動畫：三天裡說了三次的同一件事，變成專案規則，再變成 CLAUDE.md 裡的一行，等你檢查">
 
 偏好、修正與事實會整理成每個專案一份的 Markdown 筆記，每次開新對話自動帶入。你重複做的流程會變成專案 skill。只讀新增的對話，用 Sonnet 5.5（effort low）整理。
+
+萬一整理中途失敗或輸出無效，這段對話會自動留到下次重試，而且不會把同一條規則或流程的出現次數重複加一。你手動刪掉的記憶，只有在之後的新對話片段裡你又親口提起時才會加回來。
 
 ### 記得你停在哪
 
@@ -105,6 +111,16 @@ ctx-handoff 是持續成長的長時間工作工具箱：和 Claude 一起工作
 - [更新紀錄](CHANGELOG.zh-TW.md)：每個版本改了什麼、為什麼值得升級。
 - [參與貢獻](CONTRIBUTING.md)：怎麼從原始碼執行、送出修改。問題回報與點子請開 [issue](https://github.com/cablate/ctx-handoff-mod/issues/new/choose)。
 - [安全性](SECURITY.md)：怎麼私下回報漏洞。
+
+## Star 歷史
+
+<a href="https://star-history.com/#cablate/ctx-handoff-mod&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=cablate/ctx-handoff-mod&type=Date&theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=cablate/ctx-handoff-mod&type=Date" />
+    <img alt="Star 歷史圖" src="https://api.star-history.com/svg?repos=cablate/ctx-handoff-mod&type=Date" />
+  </picture>
+</a>
 
 ## 授權
 

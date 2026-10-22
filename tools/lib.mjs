@@ -36,11 +36,31 @@ export function parseNotes(text) {
   return notes
 }
 
-// 新對話開頭帶入的字數：最新 40 條記憶＋出現 2 次以上的前 15 條規則（只算規則句）
-export function injectedChars(notes) {
-  const ruleText = r => (r.body.find(l => l.startsWith('- 規則：')) ?? r.body[0] ?? '')
-  const rules = notes.rules.filter(r => r.count >= 2).sort((a, b) => b.count - a.count).slice(0, 15)
-  return notes.memory.slice(-40).join('\n').length + rules.map(ruleText).join('\n').length
+// 新對話開頭帶入的字數：偏好與修正（user／feedback）在 14 天內或根據 ≥ 2 筆時整條帶入，否則退為只帶標題；
+// 事實與位置（project／reference）與單次 feedback 超過 30 天封存；加上出現 2 次以上且尚未放進專案的前 15 條規則
+export function injectedChars(notes, day = new Date(Date.now() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 10)) {
+  const ruleText = r => (r.body.find(l => l.startsWith('- 規則：')) ?? r.body[0] ?? '').replace(/^- 規則：/, '').trim()
+  const inProj = r => r.body.some(l => l.startsWith('- 專案：已在 '))
+  const rules = notes.rules.filter(r => r.count >= 2 && !inProj(r)).sort((a, b) => b.count - a.count).slice(0, 15)
+  let memChars = 0
+  for (const raw of notes.memory) {
+    const lines = raw.split('\n')
+    const head = lines[0] ?? ''
+    const isFact = /^- \[(?:project|reference)\] /.test(head)
+    const isFeedback = /^- \[feedback\] /.test(head)
+    const evLines = lines.slice(1).filter(l => /^\s+- 根據：/.test(l))
+    const dates = evLines.map(l => /^\s+- 根據：(\d{4}-\d{2}-\d{2})/.exec(l)?.[1]).filter(Boolean).sort()
+    const seen = dates.at(-1)
+    const age = seen ? Date.parse(day) - Date.parse(seen) : undefined
+    if ((isFact || (isFeedback && evLines.length < 2)) && age !== undefined && age > 30 * 24 * 60 * 60_000) continue
+    if (!isFact && (age === undefined || evLines.length >= 2 || age <= 14 * 24 * 60 * 60_000)) {
+      const kept = lines.filter(l => !/^\s+- 根據：/.test(l))
+      memChars += kept.join('\n').length + 1
+    } else {
+      memChars += head.length + 1
+    }
+  }
+  return memChars + rules.map(r => `- ${r.name}（${r.count} 次）：${ruleText(r)}`).join('\n').length
 }
 
 // 所有專案的經驗檔：{ dir, file }

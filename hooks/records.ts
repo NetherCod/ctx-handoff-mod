@@ -14,6 +14,7 @@ export function describeUsage(u: Usage) {
   return t().usage(n(total), n(u.cacheRead), ratio.toFixed(2), n(u.cacheCreation), n(u.input), n(u.output), (u.ms / 1000).toFixed(1))
 }
 export type Away = { handoff: string; held?: string }
+export type PendingSubmit = { text: string; project: string }
 // 交接失敗紀錄：kind 是那次 handoff 的種類，reason 開頭註明失敗階段
 export type HandoffError = { at: number; sessionId: string; kind: Kind; reason: string; tokens: number | null; turns: number }
 
@@ -25,7 +26,7 @@ export type DistillError = { at: number; why: string; reason: string }
 
 // 每個 session 一把的鍵（值不改寫）：第一次看到的時間記在 seen，超過 30 天的刪掉
 const PRUNE_MS = 30 * 24 * 60 * 60_000
-const isSessionKey = (k: string) => /^(?:distill|away|last|pendingSubmit):[^:]+$/.test(k)
+const isSessionKey = (k: string) => /^(?:distill|away|last|pendingSubmit|stats:session):[^:]+$/.test(k)
 
 // 把還沒記錄的鍵記進 seen（直接改它），回傳是否有變動與該刪的鍵（同時從 seen 移除）
 export function pruneSeen(keys: readonly string[], seen: Record<string, number>, now: number) {
@@ -46,7 +47,20 @@ export function pruneSeen(keys: readonly string[], seen: Record<string, number>,
 // 累計統計（docs/north-star.md 的量測用）：一個工作區一份，只記帳、不改行為。
 // counts：事件次數；failures：最近的失敗原因；hits：最近的守門命中（指令片段，評估時再判斷擋得對不對）
 export type StatEvent = { at: number; what: string; detail: string }
-export type Stats = { since: number; counts: Record<string, number>; failures: StatEvent[]; hits: StatEvent[] }
+export type BackgroundUsage = { since: number; project: string; usage: Usage; unknownResults: number }
+export type Stats = { since: number; counts: Record<string, number>; failures: StatEvent[]; hits: StatEvent[]; background?: BackgroundUsage }
+
+export function addBackgroundUsage(prev: Stats | undefined, now: number, project: string, usage?: Usage): Stats {
+  const base = prev ?? { since: now, counts: {}, failures: [], hits: [] }
+  const background = base.background ?? { since: now, project, usage: { input: 0, cacheRead: 0, cacheCreation: 0, output: 0, ms: 0 }, unknownResults: 0 }
+  return { ...base, background: { ...background, usage: usage ? {
+    input: background.usage.input + usage.input,
+    cacheRead: background.usage.cacheRead + usage.cacheRead,
+    cacheCreation: background.usage.cacheCreation + usage.cacheCreation,
+    output: background.usage.output + usage.output,
+    ms: background.usage.ms + usage.ms,
+  } : background.usage, unknownResults: background.unknownResults + (usage ? 0 : 1) } }
+}
 // 只防無限長大，不是品質上限
 export const STATS_RECENT = 20
 export const STATS_DETAIL_MAX = 200

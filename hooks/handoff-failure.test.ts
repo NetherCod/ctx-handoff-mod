@@ -1,6 +1,6 @@
 // 交接的失敗與時間：失敗可見可重送、重試間隔、fork 卡住與逾時、搬移、專案鍵
 import { expect, test } from 'claude-code/testing'
-import { composer, cmd, say, stop, NOTES, distillNow, EXISTING, CLAUDE_PROJECTS, ALPHA, ALPHA_NOTES, repo, lastOf, actionsReply, ctl, world } from './test-world'
+import { composer, cmd, say, endTurn, stop, NOTES, distillNow, EXISTING, CLAUDE_PROJECTS, ALPHA, ALPHA_NOTES, repo, lastOf, actionsReply, ctl, world } from './test-world'
 
 // ---------- S6：失敗可見、可重送、重試有間隔 ----------
 
@@ -50,13 +50,13 @@ test('S6 兩個 session 各寫自己的 pendingSubmit：第二個成功只刪自
   ctl.failSubmits = 1
   await stop($)
   await w.clock.settle()
-  expect(typeof (w.get('pendingSubmit:S1'))).toBe('string')
+  expect(w.get('pendingSubmit:S1')).toMatchObject({ project: 'C--proj' })
   ctl.curSid = 'S2'
   await cmd($, 'now')
   await w.clock.settle()
   expect(w.submits.length).toBe(1)
   expect(w.get('pendingSubmit:S2')).toBeUndefined()
-  expect(typeof (w.get('pendingSubmit:S1'))).toBe('string')
+  expect(w.get('pendingSubmit:S1')).toMatchObject({ project: 'C--proj' })
 })
 
 test('S6 攔下訊息＋/clear 成功＋送出失敗：/handoff resend 送出 handoff 與訊息，刪掉 pending', async ($, on) => {
@@ -67,7 +67,7 @@ test('S6 攔下訊息＋/clear 成功＋送出失敗：/handoff resend 送出 ha
   await stop($)
   await w.clock.settle()
   expect(w.submits).toEqual([])
-  const pending = (w.get('pendingSubmit:S1')) as string
+  const pending = (w.get('pendingSubmit:S1') as { text: string }).text
   expect(pending).toContain('HANDOFF: 測試')
   expect(pending).toContain('中途訊息')
   expect((await cmd($, '')).text).toContain('未送達的 handoff')
@@ -95,6 +95,28 @@ test('S6 新 process 的 resend：不送別的 session 的 pending；有本 proc
   expect(w.submits[0]).toContain('HANDOFF: 測試')
   expect(w.submits[0]).not.toContain('別的 session')
   expect(typeof (w.get('pendingSubmit:OTHER'))).toBe('string')
+})
+
+test('重啟後可明確指定來源session重送未送達交接，成功後才刪', async ($, on) => {
+  const w = world(on, 100_000, 1_000_000, { 'pendingSubmit:OLD': { text: '來源交接與未送達文字', project: 'C--proj' } })
+  ctl.failSubmits = 1
+  await cmd($, 'resend OLD')
+  await w.clock.settle()
+  expect(w.get('pendingSubmit:OLD')).toBeDefined()
+  await cmd($, 'resend OLD')
+  await w.clock.settle()
+  expect(w.submits).toEqual(['來源交接與未送達文字'])
+  expect(w.get('pendingSubmit:OLD')).toBeUndefined()
+  expect(w.commands).toEqual([])
+})
+
+test('明確來源也不能重送其他工作區的pending', async ($, on) => {
+  const w = world(on, 100_000, 1_000_000, { 'pendingSubmit:OTHER': { text: '其他工作區內容', project: 'D--elsewhere' } })
+  const r = await cmd($, 'resend OTHER')
+  expect(r.text).toContain('沒有可以重送')
+  await w.clock.settle()
+  expect(w.submits).toEqual([])
+  expect(w.get('pendingSubmit:OTHER')).toBeDefined()
 })
 
 // ---------- 交接時間、逾時、搬移、專案鍵 ----------
@@ -139,11 +161,18 @@ test('交接前整理很慢：對話片段先讀好，handoff 一好就 /clear�
   expect(w.contexts.at(-1)).toBeUndefined()
 })
 
-test('整理請求逾時：時限 8 分鐘交給引擎，回 aborted 就記錄，之後的整理不會被擋住', async ($, on) => {
+test('整理請求逾時：手動整理回 aborted 仍記錄錯誤；閒置整理逾時安靜略過且第 2、3 次刷新不重試', async ($, on) => {
   const w = world(on, 100_000, 1_000_000, {}, [], 5)
   ctl.completeAborts = true
-  await distillNow($)
+  await endTurn($)
+  await w.clock.advance(55 * 60_000)
+  expect(w.completes.length).toBe(1)
   expect(w.completes[0]?.timeoutMs).toBe(8 * 60_000)
+  expect(w.get('distill:error:C--proj')).toBeUndefined()
+  await w.clock.advance(55 * 60_000)
+  expect(w.completes.length).toBe(1)
+  await distillNow($)
+  expect(w.completes.length).toBe(2)
   const err = w.get('distill:error:C--proj') as { reason: string }
   expect(err.reason).toContain('timeout')
   ctl.completeAborts = false

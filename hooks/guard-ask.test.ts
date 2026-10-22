@@ -17,7 +17,8 @@ test('守門升級：放進 repo 之後又被糾正的規則，整理完背景�
   let turns = 5
   const w = world(on, 100_000, 1_000_000, {}, [], () => turns)
   w.files.set(NOTES, NOTES_ESCALATED)
-  ctl.distillReply = actionsReply(DRAFT)
+  let calls = 0
+  ctl.onComplete = () => { ctl.distillReply = ++calls === 2 ? actionsReply(DRAFT) : actionsReply() }
   await distillNow($)
   expect(w.completes.length).toBe(2)
   expect(w.completes[1]?.system).toContain('### 推送前先跑 preflight')
@@ -30,6 +31,22 @@ test('守門升級：放進 repo 之後又被糾正的規則，整理完背景�
   await distillNow($)
   // 只有整理，沒有再起草
   expect(w.completes.length).toBe(3)
+})
+
+test('守門升級：整理完成前換 session，自動起草與整理的用量都歸來源 session', async ($, on) => {
+  const w = world(on, 100_000, 1_000_000, {}, [], 5)
+  w.files.set(NOTES, NOTES_ESCALATED)
+  let calls = 0
+  ctl.onComplete = () => {
+    calls += 1
+    ctl.distillReply = calls === 2 ? actionsReply(DRAFT) : actionsReply()
+    if (calls === 1) ctl.curSid = 'S2'
+  }
+  await distillNow($)
+  expect(w.completes.length).toBe(2)
+  expect(guardsOf(w)).toMatchObject([{ id: 1, state: 'proposed' }])
+  expect(w.get('stats:session:S1')).toMatchObject({ background: { usage: { input: 2, output: 2 }, unknownResults: 0 } })
+  expect(w.get('stats:session:S2')).toBeUndefined()
 })
 
 test('守門升級：放進 repo 時記下是第幾次；之後沒再被糾正的不起草', async ($, on) => {

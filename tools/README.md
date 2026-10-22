@@ -13,3 +13,5 @@
 | `eval-handoff.mjs build\|regen\|judge\|compare\|report` | 交接摘要的評估。`regen` 從交接前的對話用指定提示重新產生摘要；`compare` 把兩版摘要一起給評審、正反兩個順序，算新對話需要的事各寫到幾件（比提示要用它，單份分數會被長短影響）；每輪設定存在 `runs/`。真實交接當題目，交接之後新對話實際發生的事（使用者補充或糾正、AI 重查、做錯）當答案，評審模型（`claude -p`，不帶工具、不載入 mod）列出摘要漏了或寫錯什麼並打 1–5 分；`--label` 分開比較新舊提示詞。題目與結果是真實對話，放在 `<claude>/ctx-handoff-eval/`，不進 repo | 使用者反映交接摘要資訊量偏少，但沒有方法知道少了什麼、改提示詞後有沒有變好（2026-10-09 北極星討論） | 平均分數下降；同一種缺漏反覆出現 |
 
 `lib.mjs` 是共用的經驗檔解析（和 `hooks/notes.ts` 的 `parseNotes` 同規則），`notes.test.mjs` 是 `notes.mjs` 的固定測試。
+
+`eval-distill.mjs` 仍直接使用 `hooks/distill.ts` 的 `parseActions`／`applyActions` 評估模型動作。mod 的固定批次與 quote 範圍由 `hooks/distill-batch.ts` 決定，重試、墓碑與可採用動作由 `distill.ts` 的裁決入口處理；外部檔案存在檢查與寫入仍在 `register.ts`。

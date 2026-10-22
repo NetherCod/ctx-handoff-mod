@@ -94,11 +94,15 @@ test('守門：/handoff guard on|mode|drop 改狀態', async ($, on) => {
 })
 
 // 2026-10-09 實測：$.store 同一個鍵的讀改寫會互蓋。命中若改守門資料，會蓋掉另一個 session 剛在面板按的核准
-test('守門：命中只記在統計、不改守門資料；列表照樣顯示觸發次數', async ($, on) => {
+test('守門：命中只記在統計、不改守門資料；列表照樣顯示觸發次數；/handoff 狀態只讀一次經驗檔', async ($, on) => {
   const w = world(on, 1000, 1_000_000, { 'guards:C--proj': [pushGuard('on')] })
+  w.files.set(NOTES_PATH, '# ctx-handoff 專案經驗\n\n## 記憶\n- [project] A\n\n## 規則\n')
   const before = JSON.stringify(w.get('guards:C--proj'))
   await $.tool.call({ tool: 'Bash', command: 'git push origin main' })
   await $.tool.call({ tool: 'Bash', command: 'git push origin dev' })
   expect(JSON.stringify(w.get('guards:C--proj'))).toBe(before)
   expect((await cmd($, 'guard')).text).toContain('已觸發 2 次')
+  w.reads.length = 0
+  await cmd($, '')
+  expect(w.reads.filter(p => p === NOTES_PATH).length).toBe(1)
 })

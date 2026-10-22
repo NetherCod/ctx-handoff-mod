@@ -5,6 +5,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, readdi
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
+import { parseNotes, injectedChars } from './lib.mjs'
 
 const tool = join(import.meta.dirname, 'notes.mjs')
 const A = ['# ctx-handoff 專案經驗', '', '> 說明', '', '## 記憶', '- [user] 甲 一', '  延續行', '- [project] 乙 二', '', '## 規則', '', '### 規則一（2 次）', '- 規則：做 X', '- 根據：某天', ''].join('\r\n')
@@ -65,9 +66,15 @@ test('流程：沒有變動的套用原樣輸出；list 列出流程；刪除流
   writeFileSync(join(root, 'projects', 'P', 'memory', 'ctx-handoff.md'), P)
   const env = { ...process.env, CLAUDE_CONFIG_DIR: root }
   const listed = spawnSync(process.execPath, [tool, 'list', 'P'], { env, encoding: 'utf8' })
+  assert.equal(listed.status, 0, listed.stderr)
   assert.match(listed.stdout, /P1 發版（3 次）/)
   assert.match(listed.stdout, /P2 備份（1 次）/)
-  assert.equal(spawnSync(process.execPath, [tool, 'roundtrip'], { env, encoding: 'utf8' }).stdout.includes('DIFF P'), false)
+  const roundtrip = spawnSync(process.execPath, [tool, 'roundtrip'], { env, encoding: 'utf8' })
+  assert.equal(roundtrip.status, 0, roundtrip.stderr)
+  assert.deepEqual(roundtrip.stdout.trim().split(/\r?\n/).sort(), ['SAME A', 'SAME B', 'SAME P'])
+  assert.equal(read('A'), A)
+  assert.equal(read('B'), B)
+  assert.equal(read('P'), P)
   assert.equal(run([{ file: 'P', mem: '丁', op: 'append', text: '補' }, { file: 'P', mem: '丁', op: 'cut', cut: '。補' }], true).status, 0)
   assert.equal(read('P'), P)
   const r = run([{ file: 'P', proc: '備份', op: 'delete' }], true)
@@ -82,6 +89,30 @@ test('規則的 project：換掉「- 專案：」那一行；沒有就加上', (
   const r = run([{ file: 'B', rule: '規則一', op: 'project', text: '已在 CLAUDE.md（第 3 次時）' }], true)
   assert.equal(r.status, 0, r.stderr)
   assert.ok(read('B').includes('### 規則一（3 次）\n- 規則：做 X\n- 專案：已在 CLAUDE.md（第 3 次時）\n'))
-  run([{ file: 'B', rule: '規則一', op: 'project', text: '不放' }], true)
+  const replaced = run([{ file: 'B', rule: '規則一', op: 'project', text: '不放' }], true)
+  assert.equal(replaced.status, 0, r.stderr)
   assert.ok(read('B').includes('- 規則：做 X\n- 專案：不放\n') && !read('B').includes('已在 CLAUDE.md'))
 })
+
+test('injectedChars：不計入根據行、冷掉單次偏好只算標題、超過 30 天封存的事實與單次 feedback、已放進專案的規則', () => {
+  const raw = [
+    '# ctx-handoff 專案經驗', '',
+    '## 記憶',
+    '- [user] 偏好簡短', '  - 做法：直接回答', '  - 根據：2026-10-10 很長的根據內容不該算進帶入量',
+    '- [user] 舊單次偏好只算標題', '  - 做法：冷掉不帶入', '  - 根據：2026-09-25 單次',
+    '- [feedback] 過期單次修正封存不帶入', '  - 做法：不帶', '  - 根據：2026-09-01 單次',
+    '- [project] 新事實只算標題', '  - 做法：細節不帶入', '  - 根據：2026-10-10 驗證',
+    '- [project] 過期事實封存不帶入', '  - 根據：2026-01-01 舊驗證',
+    '', '## 規則', '',
+    '### 該帶入的規則（3 次）', '- 規則：先跑測試',
+    '### 已進專案不帶入（5 次）', '- 規則：已進專案', '- 專案：已在 CLAUDE.md（第 3 次時）',
+  ].join('\n')
+  const n = parseNotes(raw)
+  const chars = injectedChars(n, '2026-10-17')
+  const expected = '- [user] 偏好簡短\n  - 做法：直接回答'.length + 1
+    + '- [user] 舊單次偏好只算標題'.length + 1
+    + '- [project] 新事實只算標題'.length + 1
+    + '- 該帶入的規則（3 次）：先跑測試'.length
+  assert.equal(chars, expected)
+})
+

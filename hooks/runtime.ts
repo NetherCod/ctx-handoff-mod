@@ -7,10 +7,13 @@ import { freshReply } from './lang'
 import type { ReplyLang, ReplyState } from './lang'
 
 export const rt = {
+  distillTask: undefined as { sid: string; why: string; at: number } | undefined,
+  handoffTask: undefined as { sid: string; phase: 'refresh' | 'generating' | 'submitting'; at: number } | undefined,
   idle: undefined as Timer | undefined,
   refreshes: 0,
   // 互斥：同一時間只處理一個 handoff（不攔訊息）
   busy: false,
+  activity: 0,
   // 在場交接進行中（門檻或 /handoff now）：使用者訊息先攔下，交接後一併送出
   presenting: false,
   held: [] as string[],
@@ -36,9 +39,8 @@ export const rt = {
   statQueue: Promise.resolve() as Promise<void>,
   // 上一次整理有沒有失敗（有回答但沒套用也算），給 /handoff distill 判斷
   distillFailed: false,
-  // 放進專案的工具完整名稱（mcp__<plugin>__<name>），以註冊結果為準；這個 process 沒註冊就是 undefined
-  // 守門的 store 鍵：工作區在 process 內不變，算一次就記住（熱重載會重算）
-  guardsKeyCache: undefined as string | undefined,
+  // 工作區解析快取：同一個 session root 算一次主工作樹就記住（熱重載或換 root 時重算）
+  workspaceCache: undefined as { root: string; dir: string } | undefined,
   // 設定與介面語言：第一次用到時讀一次就記住（熱重載會重算）
   langReady: undefined as Promise<void> | undefined,
   // 防呆提醒：各工具最近一段連續失敗，與這一輪的改檔／驗證紀錄。熱重載會清掉，清掉只是少一次提醒
@@ -51,14 +53,18 @@ export const rt = {
   handed: new Set<string>(),
 }
 
-// 重設程序內狀態（模組重新載入或測試重跑時）；distilling、distillFailed、presentStartedAt 沿用原本不重設的行為
+// 重設程序內狀態（模組重新載入或測試重跑時）
 export function resetRuntime() {
+  rt.distillTask = undefined
+  rt.handoffTask = undefined
   rt.idle?.cancel()
   rt.idle = undefined
   rt.refreshes = 0
   rt.busy = false
+  rt.activity = 0
   rt.presenting = false
   rt.held = []
+  rt.presentStartedAt = undefined
   rt.pendingNotes.clear()
   rt.myPending = undefined
   rt.pendingToasted = false
@@ -68,7 +74,11 @@ export function resetRuntime() {
   rt.deferral = undefined
   rt.deferToasted = false
   rt.seenKnown.clear()
-  rt.guardsKeyCache = undefined
+  rt.distilling = false
+  rt.distillDone = undefined
+  rt.statQueue = Promise.resolve()
+  rt.distillFailed = false
+  rt.workspaceCache = undefined
   rt.langReady = undefined
   rt.streaks.clear()
   rt.work = freshWork()

@@ -59,17 +59,18 @@ test('set_progress：欄位不再各自設上限，只有整份超過防失控�
   expect(progressOffer({ ...OLD, decisions: ['先用 build 樣式'] }, 'S1', HOUR)).toContain('這件工作的決定：先用 build 樣式')
 })
 
-test('提供的條件：不同 session、24 小時內、沒交接、還沒提供過', () => {
+test('提供的條件：不同 session、7 天內（跨週末）、沒交接、還沒提供過', () => {
   const p: Progress = { ...OLD, at: 1000 }
   expect(progressOffer(p, 'S1', 1000 + HOUR)).toContain('1 小時前')
   expect(progressOffer(p, 'S0', 1000 + HOUR)).toBeUndefined()
-  expect(progressOffer(p, 'S1', 1000 + 24 * HOUR)).toBeDefined()
-  expect(progressOffer(p, 'S1', 1000 + 24 * HOUR + 1)).toBeUndefined()
+  expect(progressOffer(p, 'S1', 1000 + 3 * DAY)).toContain('3 天前')
+  expect(progressOffer(p, 'S1', 1000 + 7 * DAY)).toBeDefined()
+  expect(progressOffer(p, 'S1', 1000 + 7 * DAY + 1)).toBeUndefined()
   expect(progressOffer({ ...p, handed: true }, 'S1', 2000)).toBeUndefined()
   expect(progressOffer({ ...p, offered: ['S1'] }, 'S1', 2000)).toBeUndefined()
   expect(progressOffer({ ...p, offered: ['S1'] }, 'S2', 2000)).toBeDefined()
   expect(progressOffer(undefined, 'S1', 2000)).toBeUndefined()
-  expect([0, 20_000, 5 * 60_000, 59 * 60_000, 90 * 60_000, 23 * HOUR].map(agoText)).toEqual(['剛才', '剛才', '5 分鐘前', '59 分鐘前', '2 小時前', '23 小時前'])
+  expect([0, 20_000, 5 * 60_000, 59 * 60_000, 90 * 60_000, 23 * HOUR, 24 * HOUR, 72 * HOUR].map(agoText)).toEqual(['剛才', '剛才', '5 分鐘前', '59 分鐘前', '2 小時前', '23 小時前', '1 天前', '3 天前'])
 })
 
 // ---------- 整理時存下 ----------
@@ -114,7 +115,7 @@ test('整理：模型沒輸出 set_progress 或輸出無效的，前一份進度
   expect(saved.offered).toBeUndefined()
 })
 
-test('整理提示：附上目前的進度讓模型接著更新；沒有就寫（無）；超過一天的當作沒有', async ($, on) => {
+test('整理提示：附上目前的進度讓模型接著更新；沒有就寫（無）；7 天內跨週末保留、超過 7 天當作沒有', async ($, on) => {
   let turns = 5
   const w = world(on, 100_000, 1_000_000, {}, [], () => turns)
   ctl.distillReply = actionsReply(PROGRESS)
@@ -124,10 +125,14 @@ test('整理提示：附上目前的進度讓模型接著更新；沒有就寫�
   turns += 5
   await distillNow($)
   expect(w.completes[1]?.system).toContain(`目前的進度：剛才：任務「${PROGRESS.task}」`)
-  await w.clock.advance(25 * HOUR)
+  await w.clock.advance(3 * DAY)
   turns += 5
   await distillNow($)
-  expect(w.completes[2]?.system).toContain('目前的進度：（無）')
+  expect(w.completes[2]?.system).toContain(`目前的進度：3 天前：任務「${PROGRESS.task}」`)
+  await w.clock.advance(8 * DAY)
+  turns += 5
+  await distillNow($)
+  expect(w.completes[3]?.system).toContain('目前的進度：（無）')
 })
 
 // ---------- 新對話開頭提供 ----------
@@ -154,19 +159,18 @@ test('同一段對話只提供一次（compaction 後 prompt.context 重算也�
   expect((w.get(KEY) as Progress).offered).toEqual(['S1', 'S2'])
 })
 
-test('不提供：超過 24 小時、同一個 session 留下的、已交接的、設定關閉', async ($, on) => {
-  const w = world(on, 100_000, 1_000_000, { [KEY]: OLD })
-  await w.clock.advance(DAY)
-  expect(await blockOf($)).toContain('24 小時前')
-  await w.clock.advance(1)
-  expect(await blockOf($)).toBeUndefined()
-  w.put(KEY, { ...OLD, at: w.clock.now() })
-  ctl.curSid = 'S0'
-  expect(await blockOf($)).toBeUndefined()
-  ctl.curSid = 'S1'
-  w.put(KEY, { ...OLD, at: w.clock.now(), handed: true })
-  expect(await blockOf($)).toBeUndefined()
-})
+for (const [reason, progress, age] of [
+  ['超過 7 天', OLD, 7 * DAY + 1],
+  ['同一個 session 留下的', { ...OLD, sid: 'S1' }, 0],
+  ['已交接的', { ...OLD, handed: true }, 0],
+] as const) {
+  test(`不提供：${reason}，不是因為已提供過`, async ($, on) => {
+    const w = world(on, 100_000, 1_000_000, { [KEY]: progress })
+    await w.clock.advance(age)
+    expect(await blockOf($)).toBeUndefined()
+    expect(w.get(KEY)).toEqual(progress)
+  })
+}
 
 test('設定 resume_hint 關閉：不提供，也不記成已提供', async ($, on) => {
   const w = world(on, 100_000, 1_000_000, { [KEY]: OLD })

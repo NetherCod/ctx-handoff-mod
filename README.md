@@ -38,7 +38,7 @@ Long Claude Code sessions run into the same chores again and again. ctx-handoff 
 
 ## Install
 
-Requires Claude Code 2.1.287 or later. Tested up to 2.1.293.
+Requires Claude Code 2.1.287 or later. Tested up to 2.1.302.
 
 ```sh
 claude plugin marketplace add cablate/ctx-handoff-mod
@@ -67,6 +67,10 @@ Off by default, so Claude Code's own compact takes over. Turn on `auto_handoff` 
 
 ### Keeps the cache warm while you're away
 
+After about 50 idle minutes it sends a tiny request so the conversation cache doesn't expire (and stays ahead of Claude Code's 54-minute idle compaction on large chats), up to 3 times (about 3.5 hours); after that it saves a handoff summary without clearing, so when you return you choose to start fresh from it (`/handoff resume`) or stay where you were (`continue`).
+
+To pause away refreshes and away summaries for just this conversation, click the button at the top of the panel or run `/handoff away pause` (`resume` restarts the timer). Notes updates keep running, and other conversations aren't affected. The panel and `/handoff` also show live background activity and the session's reported background token usage since this update (not a bill; requests already sent cannot be cancelled).
+
 <img src="docs/assets/cache.svg" width="900" alt="Animation: after you leave, the cache is refreshed at 55, 110 and 165 minutes; after that a summary is saved, and when you return you choose to resume or continue">
 
 ### Learns your project, then hands it to your repo
@@ -74,6 +78,8 @@ Off by default, so Claude Code's own compact takes over. Turn on `auto_handoff` 
 <img src="docs/assets/memory.svg" width="900" alt="Animation: the same instruction on three days becomes a project rule, then a line in CLAUDE.md for you to review">
 
 Preferences, corrections and facts become one Markdown notes file per project, loaded into every new conversation. Routines you repeat become project skills. Only the new part of the conversation is read, by Sonnet 5.5 at low effort.
+
+If a notes update fails or gets unusable output, that slice of the conversation is kept for the next retry, without counting the same rule or procedure twice. Memories you delete come back only if you bring them up again in a new slice of conversation.
 
 ### Remembers where you stopped
 
@@ -105,6 +111,16 @@ Everything is on the panel's Settings tab (`/handoff panel`, then <kbd>5</kbd>),
 - [Changelog](CHANGELOG.md): what changed in each version and why it's worth upgrading.
 - [Contributing](CONTRIBUTING.md): how to run it from source and send changes. Bug reports and ideas go in [issues](https://github.com/cablate/ctx-handoff-mod/issues/new/choose).
 - [Security](SECURITY.md): how to report a vulnerability privately.
+
+## Star history
+
+<a href="https://star-history.com/#cablate/ctx-handoff-mod&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=cablate/ctx-handoff-mod&type=Date&theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=cablate/ctx-handoff-mod&type=Date" />
+    <img alt="Star history chart" src="https://api.star-history.com/svg?repos=cablate/ctx-handoff-mod&type=Date" />
+  </picture>
+</a>
 
 ## License
 

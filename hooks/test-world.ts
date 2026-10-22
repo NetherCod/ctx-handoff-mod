@@ -18,20 +18,24 @@ export const DISTILL_REPLY = actionsReply(
 
 // 會被測試改寫的世界狀態：ES module 的 let 匯出不能被匯入端重新指派，所以放進一個可變物件，每個 world() 開頭整個重設
 const fresh = () => ({
-  // 背景整理 fork 的回覆；個別測試可以換掉，onFork 可以模擬 fork 期間發生的事
   distillReply: DISTILL_REPLY,
-  onFork: undefined as (() => void | Promise<void>) | undefined,
+  onComplete: undefined as (() => void | Promise<void>) | undefined,
   // 整理請求回 aborted（引擎依 timeoutMs 放棄）
   completeAborts: false,
   takenCommands: new Set<string>(),
   registered: [] as string[],
   // 每個 fork 都會等它：用來讓 fork 停在半空中，測試並行與交接期間的行為
   forkGate: undefined as (() => Promise<void>) | undefined,
-  // 只擋整理 fork／只擋交接 fork
+  completeGate: undefined as (() => Promise<void>) | undefined,
+  // 分別擋整理與交接
   distillGate: undefined as (() => Promise<void>) | undefined,
   handoffGate: undefined as (() => Promise<void>) | undefined,
   // 寫入這個路徑時失敗（模擬磁碟錯誤）
   failWrite: undefined as string | undefined,
+  failRead: undefined as { path: string; reason: string } | undefined,
+  failStore: undefined as { key: string; remaining: number } | undefined,
+  failDelete: undefined as string | undefined,
+  onStore: undefined as ((op: 'get' | 'set', key: string) => Promise<void>) | undefined,
   // $.session.repo()：依目前工作目錄回答（會跟著 cd 變）
   curRepo: null as { root: string; remote: string | null; internal: boolean; name: string } | null,
   // 交接 fork（不是整理）回傳失敗
@@ -64,7 +68,7 @@ export const ctl = fresh()
 // 引擎底下的世界：用量、fork、/clear、送出、檔案，全部記下來
 export const world = (on: On, tokens: number, window = 1_000_000, store: Record<string, unknown> = {}, agents: { id: string; status: string }[] = [], turns: number | (() => number) = 0,
   // 介面語言由 Claude Code 的 language 設定決定；測試預設釘在繁體中文，不看執行測試那台機器的系統語系
-  language: unknown = '繁體中文') => {
+  language: unknown = '繁體中文', injectAutoHandoffOverride = true) => {
   const turnsOf = typeof turns === 'function' ? turns : () => turns
   const forks: string[] = []
   const completes: { model: string; effort?: string; system?: string; prompt: string; timeoutMs?: number }[] = []
@@ -88,16 +92,26 @@ export const world = (on: On, tokens: number, window = 1_000_000, store: Record<
   on('ui.panes', () => ({ value: [...panes].map(([id, title]) => ({ id, title, isShown: true, isFocused: false, isPlaced: true })) }))
   // 自己的 store：測試要直接讀寫（$.store 不在測試引擎的 $ 上）；值經過 JSON 來回，和真的一樣
   const kv = new Map<string, unknown>(Object.entries(store))
-  on('store.get', (_$, e: { key: string }) => ({
-    value: kv.has(e.key) ? JSON.parse(JSON.stringify(kv.get(e.key))) : e.key === 'settings' ? { ...ctl.panelSettings } : undefined,
-  }))
-  on('store.set', (_$, e: { key: string; value: unknown }) => { kv.set(e.key, JSON.parse(JSON.stringify(e.value))); return { value: undefined } })
-  on('store.delete', (_$, e: { key: string }) => { kv.delete(e.key); return { value: undefined } })
+  on('store.get', async (_$, e: { key: string }) => {
+    await ctl.onStore?.('get', e.key)
+    return { value: kv.has(e.key) ? JSON.parse(JSON.stringify(kv.get(e.key))) : e.key === 'settings' ? { ...ctl.panelSettings } : undefined }
+  })
+  on('store.set', async (_$, e: { key: string; value: unknown }) => {
+    await ctl.onStore?.('set', e.key)
+    if (ctl.failStore?.key === e.key && ctl.failStore.remaining > 0) { ctl.failStore.remaining -= 1; return { deny: 'store write failed' } }
+    kv.set(e.key, JSON.parse(JSON.stringify(e.value)))
+    return { value: undefined }
+  })
+  on('store.delete', (_$, e: { key: string }) => {
+    if (ctl.failDelete === e.key) return { deny: 'store delete failed' }
+    kv.delete(e.key)
+    return { value: undefined }
+  })
   on('store.keys', () => ({ value: [...kv.keys()] }))
   const get = (key: string) => kv.get(key)
   const put = (key: string, value: unknown) => { kv.set(key, value) }
   on('env.get', (_$, e: { name: string }) => ({ value: ctl.envVars[e.name] }))
-  on('settings.read', () => ({ value: { language, pluginConfigs: { 'ctx-handoff@ctx-handoff-mod': { options: { auto_handoff: true, ...ctl.pluginOptions } } } } }) as never)
+  on('settings.read', () => ({ value: { language, pluginConfigs: { 'ctx-handoff@ctx-handoff-mod': { options: { ...(injectAutoHandoffOverride ? { auto_handoff: true } : {}), ...ctl.pluginOptions } } } } }) as never)
   on('config.set', (_$, e: { key: string; value: unknown }) => ({ value: e.value }) as never)
   on('session.id', () => ({ value: ctl.curSid }))
   on('session.turns', () => ({ value: turnsOf() }))
@@ -125,7 +139,8 @@ export const world = (on: On, tokens: number, window = 1_000_000, store: Record<
   const reads: string[] = []
   on('fs.read', (_$, e: { path: string }) => {
     reads.push(norm(e.path))
-    return files.has(norm(e.path)) ? { value: files.get(norm(e.path)) ?? '' } : { deny: 'missing' }
+    if (ctl.failRead?.path === norm(e.path)) return { deny: ctl.failRead.reason }
+    return files.has(norm(e.path)) ? { value: files.get(norm(e.path)) ?? '' } : { deny: 'ENOENT' }
   })
   const writes: string[] = []
   on('fs.write', (_$, e: { path: string; text: string }) => {
@@ -136,23 +151,17 @@ export const world = (on: On, tokens: number, window = 1_000_000, store: Record<
   })
   on('model.fork', async (_$, e: { prompt: string }) => {
     forks.push(e.prompt)
-    const isDistill = e.prompt.includes('=== ACTIONS ===')
-    if (isDistill) await ctl.onFork?.()
     await ctl.forkGate?.()
-    if (isDistill) await ctl.distillGate?.()
-    else await ctl.handoffGate?.()
-    if (!isDistill && ctl.failHandoff) return { value: { isAnswered: false as const, reason: 'nothing-to-fork' as const } }
-    const text = isDistill ? ctl.distillReply : 'HANDOFF: 測試'
-    return { value: { isAnswered: true as const, text, usage: usage(tokens) } }
+    await ctl.handoffGate?.()
+    if (ctl.failHandoff) return { value: { isAnswered: false as const, reason: 'nothing-to-fork' as const } }
+    return { value: { isAnswered: true as const, text: 'HANDOFF: 測試', usage: usage(tokens) } }
   })
-  // 背景整理走 model.complete：記進同一個 forks 清單（系統提示＋訊息），測試照舊比對內容與次數
   on('model.complete', async (_$, e: { model: string; effort?: string; system?: string; prompt: string; timeoutMs?: number }) => {
     completes.push(e)
-    forks.push(`${e.system ?? ''}\n${e.prompt}`)
     // timeoutMs 由引擎計時；ctl.completeAborts 模擬到時回 aborted
     if (ctl.completeAborts) return { value: { isAnswered: false as const, reason: 'aborted' as const, usage: usage(0) } }
-    await ctl.onFork?.()
-    await ctl.forkGate?.()
+    await ctl.onComplete?.()
+    await ctl.completeGate?.()
     await ctl.distillGate?.()
     return { value: { isAnswered: true as const, text: ctl.distillReply, usage: usage(0) } }
   })

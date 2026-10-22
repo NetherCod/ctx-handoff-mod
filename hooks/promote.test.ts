@@ -104,7 +104,7 @@ test('放進專案：整理看過交代之後的對話卻沒看到放好，就�
 test('放進專案：整理提示列出還沒放進 repo 的項目與 in_project 的寫法', async ($, on) => {
   const w = repoWorld(on, { 'guards:C--proj': [pushGuard('on')] })
   await distillNow($)
-  const prompt = w.forks.at(-1) ?? ''
+  const prompt = (w.completes.at(-1)?.system ?? '')
   const section = prompt.slice(prompt.indexOf('五、放進 repo'), prompt.indexOf('- 附上的對話裡，AI 實際'))
   expect(section.split('\n').slice(1).filter(Boolean)).toEqual(['G1 推送前先跑 preflight', 'R1 正式站刪除要斷言筆數'])
   expect(prompt).toContain('{"op":"in_project","id":"R2","where":"CLAUDE.md"}')
@@ -176,5 +176,5 @@ test('放進專案：已在專案的規則不會再被提議成個人守門，�
   w.files.set(NOTES, PROMOTE_NOTES.replace('- 規則：DELETE 前先在 DO 區塊斷言筆數', '- 規則：DELETE 前先在 DO 區塊斷言筆數\n- 專案：已在 AGENTS.md'))
   expect((await cmd($, 'guard suggest')).text).toContain('沒有寫進 repo 後又被糾正、或不放進 repo 卻講了 3 次以上、還沒有守門的規則')
   await distillNow($)
-  expect(w.forks.at(-1) ?? '').toContain('正式站刪除要斷言筆數｜出現 4 次｜DELETE 前先在 DO 區塊斷言筆數｜已在 AGENTS.md（repo 裡的才是正本，不要 update_rule；AI 又犯而被使用者糾正時照樣 confirm_rule）')
+  expect((w.completes.at(-1)?.system ?? '')).toContain('正式站刪除要斷言筆數｜出現 4 次｜DELETE 前先在 DO 區塊斷言筆數｜已在 AGENTS.md（repo 裡的才是正本，不要 update_rule；AI 又犯而被使用者糾正時照樣 confirm_rule）')
 })

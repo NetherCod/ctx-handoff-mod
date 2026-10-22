@@ -17,6 +17,7 @@ type StatusInput = {
   progress?: string
   // 回覆語言提醒的現況（設定值與解析後的目標語言）
   replyLang: string
+  background?: string[]
 }
 
 export function statusText(s: StatusInput) {
@@ -24,6 +25,7 @@ export function statusText(s: StatusInput) {
   const { last, herr, away } = s
   return [
     `${m.cmd.context(String(s.tokens ?? '?'), thresholdOf(s.window), s.window)}`,
+    ...(s.background ?? []),
     m.cmd.refresh(s.refreshOn ? 'on' : 'off', rt.refreshes, cfg.maxRefresh, rt.idle !== undefined),
     m.cmd.away(away ? (away.held === undefined ? 'yes' : 'held') : 'none'),
     m.cmd.latest(last ? { at: new Date(last.at).toLocaleString(), kind: last.kind, tokens: String(last.tokens ?? '?') } : undefined),
@@ -32,6 +34,7 @@ export function statusText(s: StatusInput) {
     ...(rt.myPending ? [m.cmd.undelivered] : []),
     ...(rt.deferral ? [m.cmd.deferred(rt.deferral)] : []),
     ...(rt.snapshot ? [m.cmd.background(rt.snapshot.tasks, rt.snapshot.oneShot, rt.snapshot.recurring)] : []),
+    '',
     s.distill,
     s.guards,
     ...(s.progress ? [s.progress] : []),
