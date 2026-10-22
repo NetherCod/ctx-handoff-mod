@@ -620,9 +620,22 @@ test('S8 背景 shell 還在跑：不 /clear，狀態看得到原因，只提醒
   expect(w.commands).toEqual([])
   expect(w.toasts.filter(t => t.includes('延後')).length).toBe(1)
   expect((await cmd($, '')).text).toContain('handoff 延後')
+  expect(w.statuses.at(-1)).toContain('handoff 延後')
   await stop($, { background_tasks: [task('completed')] })
   await w.clock.advance(0)
   expect(w.commands).toEqual(['clear'])
+  expect(w.statuses.at(-1)).toBeUndefined()
+})
+
+test('S8 延後中關掉自動交接：下一次 Stop 收掉狀態列的延後訊息', async ($, on) => {
+  const w = world(on, 650_000)
+  await stop($, { background_tasks: [task()] })
+  expect(w.statuses.at(-1)).toContain('handoff 延後')
+  ctl.pluginOptions = { auto_handoff: false }
+  await say($, 'hi')
+  await stop($, { background_tasks: [task()] })
+  expect(w.statuses.at(-1)).toBeUndefined()
+  expect(w.commands).toEqual([])
 })
 
 test('S8 別的 Stop hook 要求繼續：這次不交接，真正停下的那次才交接', async ($, on) => {

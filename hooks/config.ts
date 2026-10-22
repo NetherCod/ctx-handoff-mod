@@ -88,6 +88,8 @@ export const DISTILL_TIMEOUT_MS = 8 * 60_000
 export const DISTILL_EFFORT = 'low'
 export const DISTILL_MAX_TOKENS = 32_000
 export const GUARD_MAX_TOKENS = 4_000
+// 離「每 N 則」整理還剩幾則時開始每則跳 toast 倒數（不佔狀態列）
+export const COUNTDOWN_TOASTS = 5
 // 門檻 handoff 失敗後，至少再 3 則使用者訊息或 10 分鐘才重試
 export const RETRY_TURNS = 3
 export const RETRY_MS = 10 * 60_000

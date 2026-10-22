@@ -100,6 +100,7 @@ const zh = {
       `背景整理（${why}）：${changes} 項變動${rejected ? `，丟棄 ${rejected} 行無效輸出` : ''}${changes ? `；寫入 ${file}` : ''}`,
     queued: (n: number) => `${n} 項變動排入下一則訊息`,
     toast: (n: number, queued: boolean, file: string) => `經驗已更新 ${n} 項${queued ? '，會跟著你下一則訊息帶入' : ''}：${file}`,
+    countdown: (n: number) => `再 ${n} 則整理筆記`,
     writeFailed: (err: string) => `寫檔失敗：${err}`,
     noUsableActions: '整理輸出沒有可採用的動作；已保留這段對話供下次重試',
     retryLost: '找不到上次部分寫入的對話終點；停止整理，未覆寫筆記或推進進度',
@@ -108,10 +109,6 @@ const zh = {
 
   // 狀態列
   status: {
-    running: '正在整理筆記…',
-    left: (n: number) => `再 ${n} 則整理筆記`,
-    short: '對話還短，先不整理筆記',
-    next: '下一則後整理筆記',
     deferred: (parts: string) => `handoff 延後：${parts}`,
   },
 
@@ -507,6 +504,7 @@ const en: Messages = {
       `notes update (${why}): ${changes} change${s(changes)}${rejected ? `, dropped ${rejected} invalid line${s(rejected)}` : ''}${changes ? `; wrote ${file}` : ''}`,
     queued: n => `${n} change${s(n)} queued for your next message`,
     toast: (n, queued, file) => `Notes updated: ${n} change${s(n)}${queued ? ', sent along with your next message' : ''}: ${file}`,
+    countdown: n => `${n} more message${s(n)} until notes update`,
     writeFailed: err => `could not write the file: ${err}`,
     noUsableActions: 'No usable actions in the notes output; the conversation is kept for retry',
     retryLost: 'The previous partial update endpoint is missing; notes and progress were not changed',
@@ -514,10 +512,6 @@ const en: Messages = {
   },
 
   status: {
-    running: 'Updating notes…',
-    left: n => `${n} more message${s(n)} until notes update`,
-    short: 'Conversation is short, notes not updated yet',
-    next: 'Notes update after the next message',
     deferred: parts => `Handoff delayed: ${parts}`,
   },
 

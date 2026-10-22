@@ -18,7 +18,7 @@ import { anchorOf } from './transcript'
 import { hasNewDistillTurns, selectDistillBatch } from './distill-batch'
 import type { DistillSnapshot as DistillSnap, DistillCheckpoint, DistillEndpoint } from './distill-batch'
 import type { Row } from './transcript'
-import { DISTILL_EFFORT, DISTILL_MAX_TOKENS, DISTILL_TIMEOUT_MS, GUARD_MAX_TOKENS, HANDOFF_TIMEOUT_MS, KEEP, DEFER_CAP_EXTRA, DEFER_CAP_RATIO, RELOAD_GRACE_MS, RETRY_MS, RETRY_TURNS, STOPPED, cfg, optionsOf, resetConfig, resolveConfig, settingSource, settingValue, specOf, stepSetting, thresholdOf } from './config'
+import { COUNTDOWN_TOASTS, DISTILL_EFFORT, DISTILL_MAX_TOKENS, DISTILL_TIMEOUT_MS, GUARD_MAX_TOKENS, HANDOFF_TIMEOUT_MS, KEEP, DEFER_CAP_EXTRA, DEFER_CAP_RATIO, RELOAD_GRACE_MS, RETRY_MS, RETRY_TURNS, STOPPED, cfg, optionsOf, resetConfig, resolveConfig, settingSource, settingValue, specOf, stepSetting, thresholdOf } from './config'
 import { resetRuntime, rt } from './runtime'
 import { doneCheck, freshWork, noteCall, trackFailure } from './loops'
 import { clearNext, noteStep, peekNext, resolveReplyLang, takePending } from './lang'
@@ -58,7 +58,6 @@ async function reloadConfig($: EngineInterface) {
     await initLang($)
   }
   if (cfg.idleMs !== before.idleMs && rt.idle !== undefined) await schedule($)
-  if (cfg.minTokens !== before.minTokens || cfg.distillEvery !== before.distillEvery) await showDistillStatus($)
 }
 
 async function isRefreshOn($: EngineInterface) {
@@ -333,7 +332,6 @@ async function distill($: EngineInterface, why: string, queue = true, snap?: Dis
   let done = () => {}
   rt.distillDone = new Promise<void>(r => { done = r })
   rt.distillFailed = false
-  await showDistillStatus($, why)
   const pk = await projectKey($)
   const fail = async (reason: string) => {
     rt.distillFailed = true
@@ -446,18 +444,17 @@ async function distill($: EngineInterface, why: string, queue = true, snap?: Dis
     rt.distillTask = undefined
     done()
     await refreshPanel($)
-    await showDistillStatus($).catch(err => $.ui.log(t().distill.writeFailed(String(err))))
   }
 }
 
-// 狀態列：整理中顯示原因，平常顯示距離下次「每 N 則」整理還差幾則；handoff 延後時讓給延後訊息
-async function showDistillStatus($: EngineInterface, running?: string) {
-  if (rt.deferral) return
-  if (!(await isDistillOn($))) return $.ui.status(undefined)
-  if (running) return $.ui.status(t().status.running)
+// 快到「每 N 則」整理時，每則訊息後跳 toast 倒數（不佔狀態列）；對話還短、這輪不會整理就不跳
+async function toastDistillCountdown($: EngineInterface, tokens: number) {
+  if (tokens < cfg.minTokens || !(await isDistillOn($))) return
+  const turns = await $.session.turns()
   const left = cfg.distillEvery - (await sinceDistill($))
-  if (left > 0) return $.ui.status(t().status.left(left))
-  $.ui.status(((await $.session.usage()).context.tokens ?? 0) < cfg.minTokens ? t().status.short : t().status.next)
+  if (left <= 0 || left > COUNTDOWN_TOASTS || rt.countdownTurn === turns) return
+  rt.countdownTurn = turns
+  $.ui.toast(t().distill.countdown(left))
 }
 
 // 上次整理之後的使用者訊息數
@@ -669,6 +666,13 @@ async function present($: EngineInterface, tokens: number | null, kind: 'present
   }
 }
 
+// 不再延後 handoff：狀態列只給延後訊息用，有延後過才收掉
+function endDeferral($: EngineInterface) {
+  if (rt.deferral) $.ui.status(undefined)
+  rt.deferral = undefined
+  rt.deferToasted = false
+}
+
 // classic.Stop：每次主對話停下來時判斷要不要交接。快照裡有背景工作與排程，
 // 背景工作和一次性排程會再叫醒這個 session，先不 /clear；循環排程不算
 async function onStop($: EngineInterface, e: { agent_id?: string; background_tasks?: { status: string }[]; session_crons?: { recurring: boolean }[] }) {
@@ -679,19 +683,11 @@ async function onStop($: EngineInterface, e: { agent_id?: string; background_tas
   rt.snapshot = { tasks, oneShot, recurring: crons.length - oneShot }
   if (rt.busy) return
   // 自動交接關閉：到門檻也不交接，交給 Claude Code 自己的 compact
-  if (!cfg.autoHandoff) {
-    rt.deferral = undefined
-    rt.deferToasted = false
-    return
-  }
+  if (!cfg.autoHandoff) return endDeferral($)
   const { context } = await $.session.usage()
   const tokens = context.tokens
   const threshold = thresholdOf(context.window)
-  if (tokens === undefined || tokens < threshold) {
-    rt.deferral = undefined
-    rt.deferToasted = false
-    return
-  }
+  if (tokens === undefined || tokens < threshold) return endDeferral($)
   const agents = (await $.agent.list()).filter(a => a.status === 'running').length
   const parts = [tasks && t().stop.tasks(tasks), oneShot && t().stop.oneShot(oneShot), agents && t().stop.agents(agents)].filter(Boolean)
   const partsText = parts.join(t().list)
@@ -713,9 +709,7 @@ async function onStop($: EngineInterface, e: { agent_id?: string; background_tas
     $.ui.log(t().stop.retryLog(tokens))
     return
   }
-  rt.deferral = undefined
-  rt.deferToasted = false
-  $.ui.status(undefined)
+  endDeferral($)
   beginPresent()
   $.clock.after(0, () => void present($, tokens, 'present', note))
 }
@@ -951,7 +945,6 @@ async function changeSetting($: EngineInterface, key: string, dir: 1 | -1) {
   if (STORE_SWITCHES.has(key)) {
     const on = (await $.store.get(key)) !== false
     await $.store.set(key, !on)
-    if (key === 'distill') await showDistillStatus($)
     return t().panelCmd.settingSet(name, on ? t().panel.offValue : t().panel.on)
   }
   const spec = specOf(key)
@@ -968,7 +961,6 @@ async function resetSetting($: EngineInterface, key: string) {
   const name = t().panel.settingName[key] ?? key
   if (STORE_SWITCHES.has(key)) {
     await $.store.delete(key)
-    if (key === 'distill') await showDistillStatus($)
     return t().panelCmd.settingReset(name, t().panel.on)
   }
   const spec = specOf(key)
@@ -1270,8 +1262,9 @@ export const register: Register = on => {
         $.ui.log(t().start.registerFailed(String(err2)))
       }
     }
+    // 狀態列只放 handoff 延後訊息，跟著 rt.deferral（熱重載會清掉）：一起清掉重載前留下的文字
     try {
-      await showDistillStatus($)
+      $.ui.status(undefined)
     } catch {}
     // 面板 pane 已不在（熱重載或重開時被引擎收掉）：停止重算快照
     try {
@@ -1408,7 +1401,7 @@ export const register: Register = on => {
       const every = cfg.distillEvery
       $.clock.after(0, () => void distill($, t().distill.why.every(every)))
     }
-    if (!rt.distilling) await showDistillStatus($)
+    if (!rt.distilling) await toastDistillCountdown($, context.tokens ?? 0)
     return out
   })
 
@@ -1615,7 +1608,6 @@ async function handoffDry($: EngineInterface) {
 async function distillCommand($: EngineInterface, arg: string) {
   if (arg === 'on' || arg === 'off') {
     await $.store.set('distill', arg === 'on')
-    await showDistillStatus($)
     return { text: t().cmd.distillSet(arg) }
   }
   if (arg !== '') return { text: `${t().cmd.distillUsage}` }

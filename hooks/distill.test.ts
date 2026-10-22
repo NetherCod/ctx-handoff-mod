@@ -3,17 +3,37 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import { NOTE_TAG, composer, cmd, say, endTurn, stop, NOTES, distillNow, EXISTING, ALPHA, ALPHA_NOTES, repo, lastOf, actionsReply, ctl, world } from './test-world'
 
-test('狀態列顯示整理進度：平常是再幾則整理，整理時顯示正在整理，整理完重算', async ($, on) => {
-  const w = world(on, 100_000, 1_000_000, {}, [], 5)
+test('整理倒數：剩 5 則以內每則訊息後跳 toast，不佔狀態列；同一則訊息不重跳，整理後重算，關掉整理就不跳', async ($, on) => {
+  let turns = 24
+  const w = world(on, 100_000, 1_000_000, {}, [], () => turns)
+  const countdowns = () => w.toasts.filter(x => x.includes('則整理筆記'))
   await endTurn($)
-  expect(w.statuses.at(-1)).toBe('再 25 則整理筆記')
-  expect((await cmd($, '')).text).toContain('下次：再 25 則')
+  expect(countdowns()).toEqual([])
+  expect((await cmd($, '')).text).toContain('下次：再 6 則')
+  turns = 25
+  await endTurn($)
+  await endTurn($)
+  turns = 29
+  await endTurn($)
+  expect(countdowns().length).toBe(2)
+  expect(countdowns()[0]).toContain('再 5 則整理筆記')
+  expect(countdowns()[1]).toContain('再 1 則整理筆記')
   await distillNow($)
-  expect(w.statuses).toContain('正在整理筆記…')
   expect(w.get('distill:error:C--proj')).toBeUndefined()
-  expect(w.statuses.at(-1)).toBe('再 30 則整理筆記')
+  turns = 54
+  await endTurn($)
+  expect(countdowns().at(-1)).toContain('再 5 則整理筆記')
   await cmd($, 'distill off')
-  expect(w.statuses.at(-1)).toBeUndefined()
+  turns = 55
+  await endTurn($)
+  expect(countdowns().length).toBe(3)
+  expect(w.statuses.filter(s => s !== undefined)).toEqual([])
+})
+
+test('整理倒數：對話還短（不到 min_tokens，這輪不會整理）不跳 toast', async ($, on) => {
+  const w = world(on, 10_000, 1_000_000, {}, [], 27)
+  await endTurn($)
+  expect(w.toasts.filter(x => x.includes('則整理筆記'))).toEqual([])
 })
 
 test('閒置刷新順便整理：寫入專案經驗檔、濾掉疑似金鑰、差異排入下一則訊息，沒新訊息就只刷新', async ($, on) => {

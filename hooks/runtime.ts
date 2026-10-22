@@ -32,6 +32,8 @@ export const rt = {
   deferral: undefined as string | undefined,
   deferToasted: false,
   seenKnown: new Set<string>(),
+  // 上次跳整理倒數 toast 時的訊息數：同一則訊息的回合結束不重複跳
+  countdownTurn: undefined as number | undefined,
   distilling: false,
   // 正在跑的整理結束時 resolve：交接前整理撞上它時排在它之後
   distillDone: undefined as Promise<void> | undefined,
@@ -74,6 +76,7 @@ export function resetRuntime() {
   rt.deferral = undefined
   rt.deferToasted = false
   rt.seenKnown.clear()
+  rt.countdownTurn = undefined
   rt.distilling = false
   rt.distillDone = undefined
   rt.statQueue = Promise.resolve()

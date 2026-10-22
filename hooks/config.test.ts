@@ -7,25 +7,15 @@ import { cmd, resume, say, startSession, endTurn, stop, NOTES, distillNow, pushG
 const EN = 'English'
 const HAS_CJK = /[\u3400-\u9fff\uff00-\uffef]/
 
-test('英文：狀態列、紀錄與 toast 沒有 [ctx-handoff] 前綴', async ($, on) => {
-  const w = world(on, 100_000, 1_000_000, {}, [], 5, EN)
+test('英文：紀錄與 toast 沒有 [ctx-handoff] 前綴', async ($, on) => {
+  const w = world(on, 100_000, 1_000_000, {}, [], 25, EN)
   await endTurn($)
-  expect(w.statuses.at(-1)).toBe('25 more messages until notes update')
+  expect(w.toasts.at(-1)).toContain('5 more messages until notes update')
   await distillNow($)
-  expect(w.statuses).toContain('Updating notes…')
-  expect(w.statuses.at(-1)).toBe('30 more messages until notes update')
   const toast = w.toasts.find(t => t.includes('Notes updated'))
   expect(toast).toContain('Notes updated: 2 changes, sent along with your next message')
   expect(toast).toContain(NOTES)
-  await cmd($, 'distill off')
-  expect(w.statuses.at(-1)).toBeUndefined()
   expect([...w.statuses, ...w.toasts, ...w.logs].filter(x => x?.includes('[ctx-handoff]'))).toEqual([])
-})
-
-test('英文：對話還短時的狀態列', async ($, on) => {
-  const w = world(on, 10_000, 1_000_000, {}, [], 30, EN)
-  await endTurn($)
-  expect(w.statuses.at(-1)).toBe('Conversation is short, notes not updated yet')
 })
 
 test('英文：/handoff 狀態與用法回覆不加 [ctx-handoff]（引擎會加 ctx-handoff:），內文沒有中文', async ($, on) => {
@@ -90,12 +80,12 @@ for (const c of PICK_CASES) {
   })
 }
 
-// 經由 plugin：language 設定決定狀態列的語言
-for (const [language, want] of [['繁體中文', '再 25 則整理筆記'], ['English', '25 more messages until notes update']] as const) {
+// 經由 plugin：language 設定決定整理倒數 toast 的語言
+for (const [language, want] of [['繁體中文', '再 5 則整理筆記'], ['English', '5 more messages until notes update']] as const) {
   test(`語言判斷經由 plugin：language=${language}`, async ($, on) => {
-    const w = world(on, 100_000, 1_000_000, {}, [], 5, language)
+    const w = world(on, 100_000, 1_000_000, {}, [], 25, language)
     await endTurn($)
-    expect(w.statuses.at(-1)).toBe(want)
+    expect(w.toasts.at(-1)).toContain(want)
   })
 }
 
@@ -127,12 +117,12 @@ test('設定：關閉保持快取的訊息照設定的閒置分鐘數', async ($
 })
 
 test('設定：別處改了介面語言，下一則訊息起介面文字跟著換', async ($, on) => {
-  const w = world(on, 100_000, 1_000_000, {}, [], 5)
+  const w = world(on, 100_000, 1_000_000, {}, [], 25)
   await startSession($)
   ctl.panelSettings = { language: 'en' }
   await say($, 'hi')
   await endTurn($)
-  expect(w.statuses.at(-1)).toBe('25 more messages until notes update')
+  expect(w.toasts.at(-1)).toContain('5 more messages until notes update')
 })
 
 test('設定：面板的閒置分鐘數決定多久後保持快取', async ($, on) => {
